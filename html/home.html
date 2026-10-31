@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>منصة SEC4 — البوابة الأكاديمية لطلاب الشعبة</title>
+  <link rel="stylesheet" href="../css/main.css?v=7"/>
+  <link rel="stylesheet" href="../css/platform.css?v=7"/>
+</head>
+<body class="platform-body">
+
+  <!-- ══ Mobile Sidebar Backdrop (Tap outside to close menu) ══ -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="Platform.toggleMobileSidebar(false)"></div>
+
+  <!-- ══ SPARK Dynamic Watermark Layer (Protected by MutationObserver) ══ -->
+  <div class="spark-watermark-layer" id="sparkWatermarkLayer" aria-hidden="true">
+    <div class="spark-wm-grid" id="sparkWatermarkGrid"></div>
+  </div>
+
+  <!-- ══ SPARK Anti-Capture / Tab-Blur Privacy Shield ══ -->
+  <div class="spark-privacy-shield" id="sparkPrivacyShield">
+    <div style="font-size:48px;margin-bottom:14px;">🛡️</div>
+    <h2 style="font-size:22px;margin-bottom:8px;">تم إخفاء محتوى SPARK مؤقتاً لحماية المحتوى</h2>
+    <p id="sparkShieldReason" style="color:rgba(255,255,255,0.7);max-width:440px;line-height:1.7;margin-bottom:18px;">
+      تم اكتشاف مغادرة التبويب أو محاولة تصوير الشاشة. عُد إلى نافذة الموقع واضغط بالأسفل لمتابعة التصفح.
+    </p>
+    <button class="f-btn primary" onclick="Platform.resumeSparkView()" style="padding:10px 24px;font-size:14px;">
+      👁️ العودة لعرض المحتوى
+    </button>
+  </div>
+
+  <!-- ══ Sidebar Navigation ══ -->
+  <aside class="p-sidebar" id="pSidebar">
+    <div class="sidebar-brand">
+      <div class="brand-badge">SEC4</div>
+      <div class="brand-text">
+        <h2>منصة SEC4</h2>
+        <span>البوابة الأكاديمية للشعبة</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">القائمة الرئيسية</div>
+      <button class="nav-btn active" data-view="home" onclick="Platform.switchView('home')">
+        <span class="nav-ic">🏠</span> <span>الرئيسية والإعلانات</span>
+      </button>
+
+      <div class="nav-section-label">الأقسام الرئيسية</div>
+      <!-- 1. المشاريع -->
+      <button class="nav-btn" data-view="projects" onclick="Platform.switchView('projects')">
+        <span class="nav-ic">🚀</span> <span>1. المشاريع</span>
+      </button>
+      <!-- 2. الاختبارات -->
+      <button class="nav-btn" data-view="exams" onclick="Platform.switchView('exams')">
+        <span class="nav-ic">📝</span> <span>2. الاختبارات</span>
+      </button>
+      <!-- 3. الجدول -->
+      <button class="nav-btn" data-view="schedule" onclick="Platform.switchView('schedule')">
+        <span class="nav-ic">📅</span> <span>3. الجدول</span>
+      </button>
+      <!-- 4. SPARK -->
+      <button class="nav-btn" data-view="spark" onclick="Platform.switchView('spark')" style="border:1px solid rgba(245,158,11,0.35);">
+        <span class="nav-ic">⚡</span> <span>4. SPARK</span>
+      </button>
+
+      <div class="nav-section-label">المواد والموارد</div>
+      <button class="nav-btn" data-view="handouts" onclick="Platform.switchView('handouts')">
+        <span class="nav-ic">📚</span> <span>الملازم والمواد</span>
+      </button>
+      <button class="nav-btn" data-view="blackboard" onclick="Platform.switchView('blackboard')">
+        <span class="nav-ic">🎓</span> <span>البلاكبورد</span>
+      </button>
+      <button class="nav-btn" data-view="resources" onclick="Platform.switchView('resources')">
+        <span class="nav-ic">🗂️</span> <span>الملفات والموارد</span>
+      </button>
+
+      <div class="nav-section-label">مساحتي</div>
+      <button class="nav-btn" data-view="favorites" onclick="Platform.switchView('favorites')">
+        <span class="nav-ic">⭐</span> <span>المفضلة</span>
+      </button>
+      <button class="nav-btn" data-view="profile" onclick="Platform.switchView('profile')">
+        <span class="nav-ic">👤</span> <span>الملف الشخصي</span>
+      </button>
+      <button class="nav-btn" data-view="about" onclick="Platform.switchView('about')">
+        <span class="nav-ic">ℹ️</span> <span>عن منصة SEC4</span>
+      </button>
+
+      <!-- Admin Dashboard Link (Only shown if server verifies role === 'admin') -->
+      <a href="admin.html" class="nav-btn admin-nav-btn" id="adminSidebarLink" style="display:none;">
+        <span class="nav-ic">🛡️</span> <span>لوحة تحكم الإدارة</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="nav-btn" style="color:#f87171;" onclick="Platform.logout()">
+        <span class="nav-ic">🚪</span> <span>تسجيل الخروج</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ══ Top Header Bar ══ -->
+  <header class="p-topbar">
+    <div style="display:flex;align-items:center;gap:12px;flex:1;">
+      <button class="menu-toggle-btn" onclick="Platform.toggleMobileSidebar()">☰</button>
+
+      <!-- Global Search -->
+      <div class="global-search-wrap" id="globalSearchWrap">
+        <span class="global-search-icon">🔍</span>
+        <input type="search" id="globalSearchInput" class="global-search-input"
+               placeholder="ابحث في المشاريع، الاختبارات، الملازم، الملفات، البلاكبورد..."/>
+        <div class="search-dropdown" id="searchDropdown"></div>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <!-- Notifications Bell -->
+      <div style="position:relative;" id="notifWrap">
+        <button class="icon-btn" id="notifBellBtn" title="الإشعارات">
+          🔔
+          <span class="notif-badge" id="notifBadge">0</span>
+        </button>
+        <div class="notif-panel" id="notifPanel">
+          <div class="notif-head">
+            <h4>🔔 الإشعارات والتنبيهات</h4>
+            <button onclick="Platform.markAllNotificationsRead()">تحديد الكل كمقروء</button>
+          </div>
+          <div class="notif-list" id="notifList">
+            <div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;">لا توجد إشعارات حالياً</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Theme Toggle -->
+      <button id="themeToggle" class="icon-btn" onclick="App.toggleTheme()" title="الوضع الفاتح / الداكن">🌙</button>
+
+      <!-- Language Selector -->
+      <div id="langWrap" style="position:relative;">
+        <button id="langToggleBtn">
+          <span class="globe">🌐</span>
+          <span id="langLabel">العربية</span>
+          <span id="langArrow">▾</span>
+        </button>
+        <div id="langPanel">
+          <div class="lang-featured">
+            <div class="lang-pill active" data-lang="ar">العربية</div>
+            <div class="lang-pill" data-lang="en">English</div>
+          </div>
+          <div class="lang-sep">Languages</div>
+        </div>
+      </div>
+
+      <!-- User Profile Chip -->
+      <div class="user-chip" onclick="Platform.switchView('profile')" title="الملف الشخصي">
+        <span class="u-avatar" id="headerAvatar">ط</span>
+        <span id="headerUserName">...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══ Main Dynamic Content ══ -->
+  <main class="p-main">
+
+    <!-- ─────────────────────────────────────────────────
+         VIEW 1: HOME PAGE
+    ───────────────────────────────────────────────── -->
+    <section id="view-home" class="p-view">
+      <!-- Welcome Student Banner -->
+      <div class="hero-banner">
+        <div>
+          <h1 id="welcomeHeading">👋 أهلاً بك في منصة SEC4</h1>
+          <p>المكان الرئيسي الذي يجمع كل ما تحتاجه خلال الفصل الدراسي من إعلانات، مشاريع، اختبارات، جداول، SPARK، وموارد تعليمية.</p>
+        </div>
+        <div class="hero-badges">
+          <div class="hero-stat">
+            <span class="num" id="homeStatPosts">0</span>
+            <span class="lbl">الإعلانات</span>
+          </div>
+          <div class="hero-stat">
+            <span class="num" id="homeStatFiles">0</span>
+            <span class="lbl">الملفات والملازم</span>
+          </div>
+          <div class="hero-stat">
+            <span class="num" id="homeStatFolders">0</span>
+            <span class="lbl">المجلدات</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pinned Announcements -->
+      <div id="pinnedSectionWrap" style="display:none;">
+        <div class="sec-head">
+          <h2>📌 المنشورات والإعلانات المثبتة</h2>
+        </div>
+        <div class="posts-list" id="pinnedPostsList"></div>
+      </div>
+
+      <!-- Main Sections Cards (Ordered: 1. Projects, 2. Exams, 3. Schedule, 4. SPARK + Handouts, Blackboard, Resources) -->
+      <div class="sec-head">
+        <h2>🧭 الأقسام الرئيسية لشعبة SEC4</h2>
+      </div>
+      <div class="sections-grid">
+        <!-- 1. المشاريع -->
+        <div class="section-card" onclick="Platform.switchView('projects')">
+          <div class="sc-icon" style="background:rgba(56,189,248,0.16);color:#38bdf8;">🚀</div>
+          <h3>1. المشاريع</h3>
+          <p>ملفات ومتطلبات ونماذج المشاريع الدراسية الخاصة بطلاب الشعبة.</p>
+          <div class="sc-tags">
+            <span class="sc-tag">ENG11</span><span class="sc-tag">ENG12</span><span class="sc-tag">ENG13</span><span class="sc-tag">ENG14</span><span class="sc-tag">SSO</span>
+          </div>
+        </div>
+
+        <!-- 2. الاختبارات -->
+        <div class="section-card" onclick="Platform.switchView('exams')">
+          <div class="sc-icon" style="background:rgba(239,68,68,0.16);color:#f87171;">📝</div>
+          <h3>2. الاختبارات</h3>
+          <p>نماذج الاختبارات السابقة، المراجعات، والأسئلة لجميع المواد الخمس.</p>
+          <div class="sc-tags">
+            <span class="sc-tag">ENG11</span><span class="sc-tag">ENG12</span><span class="sc-tag">ENG13</span><span class="sc-tag">ENG14</span><span class="sc-tag">SSO</span>
+          </div>
+        </div>
+
+        <!-- 3. الجدول -->
+        <div class="section-card" onclick="Platform.switchView('schedule')">
+          <div class="sc-icon" style="background:rgba(59,130,246,0.16);color:#60a5fa;">📅</div>
+          <h3>3. الجدول</h3>
+          <p>جدول المحاضرات والحصص الأسبوعي للشعبة بصيغة تفاعلية وملفات PDF/صور.</p>
+          <div class="sc-tags">
+            <span class="sc-tag">جدول الشعبة</span><span class="sc-tag">PDF / صور</span>
+          </div>
+        </div>
+
+        <!-- 4. SPARK -->
+        <div class="section-card" onclick="Platform.switchView('spark')" style="border-color:rgba(245,158,11,0.4);">
+          <div class="sc-icon" style="background:linear-gradient(135deg,rgba(245,158,11,0.25),rgba(239,68,68,0.25));color:#fbbf24;">⚡</div>
+          <h3>4. SPARK</h3>
+          <p>قسم خاص وحصري للمشتركين عبر كود التفعيل مع حماية متقدمة للمحتوى.</p>
+          <div class="sc-tags">
+            <span class="sc-tag" style="background:rgba(245,158,11,0.2);color:#fbbf24;">🔑 باشتراك خاص</span>
+            <span class="sc-tag">محتوى محمي</span>
+          </div>
+        </div>
+
+        <!-- الملازم -->
+        <div class="section-card" onclick="Platform.switchView('handouts')">
+          <div class="sc-icon" style="background:rgba(16,185,129,0.16);color:#34d399;">📚</div>
+          <h3>الملازم والمواد</h3>
+          <p>جميع الملازم والشروحات والمواد الدراسية مرتبة داخل مجلدات لكل مادة.</p>
+          <div class="sc-tags">
+            <span class="sc-tag">ENG11</span><span class="sc-tag">ENG12</span><span class="sc-tag">ENG13</span><span class="sc-tag">ENG14</span><span class="sc-tag">SSO</span>
+          </div>
+        </div>
+
+        <!-- البلاكبورد -->
+        <div class="section-card" onclick="Platform.switchView('blackboard')">
+          <div class="sc-icon" style="background:rgba(168,85,247,0.16);color:#c084fc;">🎓</div>
+          <h3>البلاكبورد</h3>
+          <p>الروابط المباشرة، الشروحات، والملفات التعليمية الخاصة بالبلاكبورد حسب المادة.</p>
+          <div class="sc-tags">
+            <span class="sc-tag">روابط مباشرة</span><span class="sc-tag">ملفات وشرح</span>
+          </div>
+        </div>
+
+        <!-- الملفات والموارد -->
+        <div class="section-card" onclick="Platform.switchView('resources')">
+          <div class="sc-icon" style="background:rgba(245,158,11,0.16);color:#fbbf24;">🗂️</div>
+          <h3>الملفات والموارد</h3>
+          <p>مكتبة عامة لجميع الملفات والأدوات والمراجع الإضافية التي تهم طلاب الشعبة.</p>
+          <div class="sc-tags">
+            <span class="sc-tag">مجلدات عامة</span><span class="sc-tag">جميع الصيغ</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Latest Announcements & Posts -->
+      <div class="sec-head">
+        <h2>📢 آخر الإعلانات والمنشورات</h2>
+        <button class="f-btn primary admin-only-el" style="display:none;" onclick="location.href='admin.html'">➕ نشر إعلان جديد</button>
+      </div>
+      <div class="posts-list" id="latestPostsList"></div>
+
+      <!-- Recently Added Files -->
+      <div class="sec-head">
+        <h2>🆕 آخر الملفات والروابط المضافة</h2>
+      </div>
+      <div class="files-grid" id="recentFilesGrid"></div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         VIEW 2: FILE MANAGER SECTIONS
+         (Projects, Exams, Handouts, Blackboard, Resources)
+         Includes Direct Inline Admin Tools!
+    ───────────────────────────────────────────────── -->
+    <section id="view-browser" class="p-view" style="display:none;">
+      <div class="sec-head">
+        <h2 id="browserTitle">📝 القسم</h2>
+      </div>
+
+      <!-- ══ INLINE ADMIN TOOLBAR (Only rendered/shown when DB role === 'admin') ══ -->
+      <div class="inline-admin-bar" id="inlineAdminBar">
+        <div class="adm-badge">
+          <span>🛡️ أدوات الإدارة المباشرة</span>
+          <span style="font-weight:400;opacity:0.8;font-size:11.5px;">(الرفع والإضافة مباشرة في هذا القسم والمجلد)</span>
+        </div>
+        <button class="f-btn primary" onclick="Platform.openUploadModal()">➕ إضافة / ⬆️ رفع ملف</button>
+        <button class="f-btn" onclick="Platform.openCreateFolderModal()">📁 إنشاء مجلد</button>
+        <button class="f-btn" onclick="Platform.openAddLinkModal()">🔗 إضافة رابط</button>
+      </div>
+
+      <!-- Subject Sub-Tabs (ENG11, ENG12, ENG13, ENG14, SSO) -->
+      <div class="subject-tabs" id="subjectTabsBar">
+        <button class="subject-tab active" data-subj="ENG11" onclick="Platform.selectSubject('ENG11')">ENG11</button>
+        <button class="subject-tab" data-subj="ENG12" onclick="Platform.selectSubject('ENG12')">ENG12</button>
+        <button class="subject-tab" data-subj="ENG13" onclick="Platform.selectSubject('ENG13')">ENG13</button>
+        <button class="subject-tab" data-subj="ENG14" onclick="Platform.selectSubject('ENG14')">ENG14</button>
+        <button class="subject-tab" data-subj="SSO" onclick="Platform.selectSubject('SSO')">SSO</button>
+      </div>
+
+      <!-- File Manager Box -->
+      <div class="fm-box">
+        <div class="fm-toolbar">
+          <div class="breadcrumbs" id="fmBreadcrumbs"></div>
+          <div class="fm-controls">
+            <input type="search" id="fmLocalSearch" placeholder="🔍 تصفية بالاسم..." oninput="Platform.filterCurrentView()"/>
+            <select id="fmSortSelect" onchange="Platform.loadSectionContent()">
+              <option value="date_desc">الأحدث أولاً</option>
+              <option value="date_asc">الأقدم أولاً</option>
+              <option value="name_asc">ترتيب حسب الاسم (أ - ي)</option>
+              <option value="order_asc">الترتيب المخصص</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Folders Container -->
+        <div id="fmFoldersWrap">
+          <h4 style="color:var(--text-muted);font-size:12.5px;margin-bottom:10px;">📁 المجلدات</h4>
+          <div class="folders-grid" id="fmFoldersGrid"></div>
+        </div>
+
+        <!-- Files & Links Container -->
+        <div id="fmFilesWrap">
+          <h4 style="color:var(--text-muted);font-size:12.5px;margin-bottom:10px;">📄 الملفات والروابط</h4>
+          <div class="files-grid" id="fmFilesGrid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         VIEW 3: SPARK SECTION (Subscription Gate + Protected Content)
+    ───────────────────────────────────────────────── -->
+    <section id="view-spark" class="p-view" style="display:none;">
+      <!-- A. Subscription Gate (Shown when student is NOT subscribed) -->
+      <div id="sparkGateContainer" style="display:none;">
+        <div class="spark-gate-card">
+          <div class="spark-gate-icon">⚡</div>
+          <h2 style="color:var(--text);font-size:24px;font-weight:700;margin-bottom:8px;">قسم SPARK الحصري</h2>
+          <p style="color:var(--text-muted);font-size:14px;line-height:1.7;margin-bottom:22px;">
+            هذا القسم مخصص للمشتركين فقط. أدخل كود الاشتراك الخاص بك لتفعيل الوصول الدائم على حسابك.
+          </p>
+          <form id="sparkRedeemForm">
+            <input type="text" id="sparkCodeInput" class="spark-code-input"
+                   placeholder="SPARK-XXXX-XXXX" autocomplete="off" required/>
+            <button type="submit" id="sparkRedeemBtn" class="btn"
+                    style="background:linear-gradient(135deg,#f59e0b,#ef4444);margin-top:4px;">
+              🔑 تفعيل الاشتراك
+            </button>
+          </form>
+          <div id="sparkGateMsg" style="margin-top:14px;font-size:13px;font-weight:700;"></div>
+        </div>
+      </div>
+
+      <!-- B. Unlocked SPARK Protected Content (Ready for custom reference design later) -->
+      <div id="sparkContentContainer" class="spark-protected-zone" style="display:none;">
+        <div class="hero-banner" style="background:linear-gradient(135deg,rgba(245,158,11,0.22),rgba(239,68,68,0.22));border-color:rgba(245,158,11,0.4);">
+          <div>
+            <h1>⚡ SPARK — المساحة المشتركة المحمية</h1>
+            <p>اشتراكك مفعّل بشكل دائم على حسابك. المحتوى محمي بعلامة مائية خاصة بحسابك.</p>
+          </div>
+          <div id="sparkSubBadgeInfo" style="font-size:12.5px;color:var(--text-muted);"></div>
+        </div>
+
+        <!-- Admin Direct Controls inside SPARK -->
+        <div class="inline-admin-bar" id="sparkAdminBar">
+          <div class="adm-badge">
+            <span>🛡️ إدارة محتوى SPARK المباشرة</span>
+          </div>
+          <button class="f-btn primary" onclick="Platform.openUploadModal('spark')">➕ إضافة / ⬆️ رفع ملف في SPARK</button>
+          <button class="f-btn" onclick="Platform.openCreateFolderModal('spark')">📁 إنشاء مجلد في SPARK</button>
+          <button class="f-btn" onclick="Platform.openSparkPostModal()">📢 إضافة منشور في SPARK</button>
+          <a href="admin.html#spark-codes" class="f-btn">🔑 إدارة أكواد SPARK</a>
+        </div>
+
+        <!-- SPARK Announcements / Posts -->
+        <div class="sec-head">
+          <h2>📢 منشورات وتحديثات SPARK</h2>
+        </div>
+        <div class="posts-list" id="sparkPostsList"></div>
+
+        <!-- SPARK File & Folder Manager -->
+        <div class="sec-head">
+          <h2>🗂️ ملفات ومجلدات SPARK</h2>
+        </div>
+        <div class="fm-box">
+          <div class="fm-toolbar">
+            <div class="breadcrumbs" id="sparkBreadcrumbs"></div>
+            <div class="fm-controls">
+              <input type="search" id="sparkLocalSearch" placeholder="🔍 بحث داخل SPARK..." oninput="Platform.filterSparkView()"/>
+              <select id="sparkSortSelect" onchange="Platform.loadSparkFiles()">
+                <option value="date_desc">الأحدث أولاً</option>
+                <option value="date_asc">الأقدم أولاً</option>
+                <option value="name_asc">ترتيب حسب الاسم</option>
+                <option value="order_asc">الترتيب المخصص</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="sparkFoldersWrap">
+            <h4 style="color:var(--text-muted);font-size:12.5px;margin-bottom:10px;">📁 المجلدات</h4>
+            <div class="folders-grid" id="sparkFoldersGrid"></div>
+          </div>
+
+          <div id="sparkFilesWrap">
+            <h4 style="color:var(--text-muted);font-size:12.5px;margin-bottom:10px;">📄 الملفات والصور</h4>
+            <div class="files-grid" id="sparkFilesGrid"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         VIEW 4: SCHEDULE SECTION (الجدول الدراسي)
+    ───────────────────────────────────────────────── -->
+    <section id="view-schedule" class="p-view" style="display:none;">
+      <div class="sec-head">
+        <h2>📅 الجدول الدراسي لشعبة SEC4</h2>
+      </div>
+
+      <!-- Inline Admin Toolbar for Schedule -->
+      <div class="inline-admin-bar" id="scheduleAdminBar">
+        <div class="adm-badge">🛡️ أدوات إدارة الجدول</div>
+        <button class="f-btn primary" onclick="Platform.openUploadModal('schedule')">🖼️ رفع صورة / PDF للجدول</button>
+        <a href="admin.html" class="f-btn">📅 تعديل حصص الجدول التفاعلي</a>
+      </div>
+
+      <div class="schedule-table-wrap">
+        <table class="schedule-table">
+          <thead>
+            <tr>
+              <th>اليوم</th>
+              <th>الوقت</th>
+              <th>المادة</th>
+              <th>القاعة / المكان</th>
+              <th>المحاضر</th>
+              <th>ملاحظات</th>
+            </tr>
+          </thead>
+          <tbody id="scheduleTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="sec-head">
+        <h2>🖼️ ملفات وصور الجدول المرفوعة (PDF / صور)</h2>
+      </div>
+      <div class="files-grid" id="scheduleFilesGrid"></div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         VIEW 5: FAVORITES (المفضلة)
+    ───────────────────────────────────────────────── -->
+    <section id="view-favorites" class="p-view" style="display:none;">
+      <div class="sec-head">
+        <h2>⭐ ملفاتي المفضلة</h2>
+      </div>
+      <div class="files-grid" id="favoritesGrid"></div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         VIEW 6: PROFILE (الملف الشخصي)
+    ───────────────────────────────────────────────── -->
+    <section id="view-profile" class="p-view" style="display:none;">
+      <div class="sec-head">
+        <h2>👤 الملف الشخصي</h2>
+      </div>
+      <div class="fm-box" style="max-width:600px;">
+        <form id="profileForm">
+          <div style="display:flex;align-items:center;gap:18px;margin-bottom:22px;">
+            <div id="profileAvatarPreview" style="width:74px;height:74px;border-radius:50%;background:var(--accent-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;overflow:hidden;">
+              ط
+            </div>
+            <div>
+              <label style="margin-bottom:6px;">الصورة الشخصية (JPG, PNG, WEBP — حتى 10MB)</label>
+              <input type="file" name="avatar" accept="image/*" style="padding:8px;"/>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="form-group">
+              <label>الاسم الأول</label>
+              <input type="text" name="first_name" id="profFirst" style="direction:ltr" required/>
+            </div>
+            <div class="form-group">
+              <label>الاسم الأخير</label>
+              <input type="text" name="last_name" id="profLast" style="direction:ltr" required/>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>البريد الإلكتروني (للعرض فقط — التعديل عبر الإدارة)</label>
+            <input type="email" id="profEmail" disabled style="opacity:0.65;direction:ltr"/>
+          </div>
+
+          <div class="form-group">
+            <label>رقم الهاتف (للعرض فقط — التعديل عبر الإدارة)</label>
+            <input type="text" id="profPhone" disabled style="opacity:0.65;direction:ltr"/>
+          </div>
+
+          <div class="form-group">
+            <label>تغيير كلمة المرور <span class="note">(اتركها فارغة إذا لا ترغب بتغييرها)</span></label>
+            <input type="password" name="new_password" placeholder="••••••••"/>
+          </div>
+
+          <button type="submit" class="btn" style="background:var(--accent-grad);">💾 حفظ التغييرات المسموحة</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         VIEW 7: ABOUT SEC4 (صفحة عن الموقع)
+    ───────────────────────────────────────────────── -->
+    <section id="view-about" class="p-view" style="display:none;">
+      <div class="sec-head">
+        <h2>ℹ️ عن منصة SEC4</h2>
+      </div>
+      <div class="fm-box" style="line-height:1.9;color:var(--label);font-size:14.5px;">
+        <h3 style="color:var(--text);font-size:19px;margin-bottom:10px;">🎓 منصة طلاب شعبة SEC4 الأكاديمية</h3>
+        <p style="margin-bottom:14px;">
+          تم تصميم وتطوير هذه المنصة لتكون المرجع الرسمي والمكان الموحد لطلاب <strong>شعبة SEC4</strong> طوال الفصل الدراسي، بحيث يصل الطالب بسهولة وسرعة إلى جميع المقررات والمشاريع والاختبارات في مكان واحد منظم.
+        </p>
+        <ul style="padding-inline-start:20px;margin-bottom:16px;">
+          <li><strong>🚀 المشاريع والاختبارات:</strong> تنظيم كامل لجميع مواد <code>ENG11</code>، <code>ENG12</code>، <code>ENG13</code>، <code>ENG14</code>، و<code>SSO</code>.</li>
+          <li><strong>⚡ قسم SPARK الحصري:</strong> مساحة خاصة للمشتركين عبر أكواد التفعيل مع حماية المحتوى والعلامة المائية.</li>
+          <li><strong>📚 الملازم والجدول والبلاكبورد:</strong> تصفح وتحميل ومعاينة الملفات بجميع الصيغ داخل مجلدات منظمة.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ══ Footer ══ -->
+    <footer class="p-footer">
+      <div>© 2026 <strong>منصة SEC4</strong> — جميع الحقوق محفوظة لطلاب وإدارة شعبة SEC4</div>
+      <div style="display:flex;gap:14px;">
+        <a href="#" onclick="Platform.switchView('home');return false;" style="color:var(--link);text-decoration:none;">الرئيسية</a>
+        <a href="#" onclick="Platform.switchView('about');return false;" style="color:var(--link);text-decoration:none;">عن المنصة</a>
+      </div>
+    </footer>
+
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       INLINE ADMIN MODALS (Only usable by Admin, verified on server)
+  ══════════════════════════════════════════════════════════════════ -->
+
+  <!-- 1. Modal: Upload File(s) Directly into Section/Folder -->
+  <div class="p-modal-backdrop" id="inlineUploadModal">
+    <div class="p-modal-box">
+      <div class="p-modal-head">
+        <h3>⬆️ رفع ملف أو عدة ملفات</h3>
+        <button class="p-modal-close" onclick="Platform.closeModal('inlineUploadModal')">✕</button>
+      </div>
+      <div class="limits-note">
+        📌 <strong>الصيغ المدعومة:</strong> PDF, ZIP, RAR, PPT, PPTX, DOC, DOCX, XLS, XLSX, PNG, JPG, JPEG, MP4, TXT وغيرها.<br/>
+        📏 <strong>الحد الأقصى لحجم الملف الواحد:</strong> 150 MB.
+      </div>
+      <form id="inlineUploadForm">
+        <div class="form-group">
+          <label>1. اسم الملف <span class="note">(اختياري عند رفع عدة ملفات — سيُستخدم اسم كل ملف)</span></label>
+          <input type="text" name="title" id="iuTitle" placeholder="مثال: نموذج اختبار المنتصف الأول"/>
+        </div>
+        <div class="form-group">
+          <label>2. وصف الملف <span class="note">(اختياري)</span></label>
+          <input type="text" name="description" id="iuDesc" placeholder="وصف مختصر أو ملاحظات للطلاب..."/>
+        </div>
+        <div class="form-group">
+          <label>3. اختيار الملف أو الملفات من الجهاز</label>
+          <input type="file" name="files[]" id="iuFiles" multiple required style="padding:9px;"/>
+        </div>
+        <div class="form-group">
+          <label>4. المجلد الذي سيتم رفع الملف إليه</label>
+          <select name="folder_id" id="iuFolderSelect" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;"></select>
+        </div>
+
+        <!-- Upload Progress Indicator -->
+        <div class="upload-progress-wrap" id="iuProgressWrap">
+          <div class="upload-progress-bar">
+            <div class="upload-progress-fill" id="iuProgressFill"></div>
+          </div>
+          <div class="upload-progress-text" id="iuProgressText">جاري الرفع... 0%</div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button type="submit" id="iuSubmitBtn" class="f-btn primary" style="flex:1;justify-content:center;padding:11px;">⬆️ بدء الرفع والحفظ</button>
+          <button type="button" class="f-btn" onclick="Platform.closeModal('inlineUploadModal')">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. Modal: Create Folder / Subfolder -->
+  <div class="p-modal-backdrop" id="inlineFolderModal">
+    <div class="p-modal-box" style="max-width:420px;">
+      <div class="p-modal-head">
+        <h3>📁 إنشاء مجلد جديد</h3>
+        <button class="p-modal-close" onclick="Platform.closeModal('inlineFolderModal')">✕</button>
+      </div>
+      <form id="inlineFolderForm">
+        <div class="form-group">
+          <label>اسم المجلد</label>
+          <input type="text" id="ifName" placeholder="مثال: مراجعات النهائي" required/>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button type="submit" class="f-btn primary" style="flex:1;justify-content:center;padding:11px;">➕ إنشاء المجلد</button>
+          <button type="button" class="f-btn" onclick="Platform.closeModal('inlineFolderModal')">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. Modal: Add Direct Link -->
+  <div class="p-modal-backdrop" id="inlineLinkModal">
+    <div class="p-modal-box" style="max-width:460px;">
+      <div class="p-modal-head">
+        <h3>🔗 إضافة رابط مباشر</h3>
+        <button class="p-modal-close" onclick="Platform.closeModal('inlineLinkModal')">✕</button>
+      </div>
+      <form id="inlineLinkForm">
+        <div class="form-group">
+          <label>عنوان الرابط</label>
+          <input type="text" id="ilTitle" placeholder="مثال: رابط المحاضرة المباشرة" required/>
+        </div>
+        <div class="form-group">
+          <label>الرابط (URL)</label>
+          <input type="url" id="ilUrl" placeholder="https://..." style="direction:ltr" required/>
+        </div>
+        <div class="form-group">
+          <label>الوصف أو الملاحظات (اختياري)</label>
+          <input type="text" id="ilDesc" placeholder="ملاحظات للطالب..."/>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button type="submit" class="f-btn primary" style="flex:1;justify-content:center;padding:11px;">🔗 حفظ الرابط</button>
+          <button type="button" class="f-btn" onclick="Platform.closeModal('inlineLinkModal')">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 4. Modal: Edit / Rename / Move File -->
+  <div class="p-modal-backdrop" id="inlineEditFileModal">
+    <div class="p-modal-box" style="max-width:480px;">
+      <div class="p-modal-head">
+        <h3>✏️ تعديل أو نقل الملف</h3>
+        <button class="p-modal-close" onclick="Platform.closeModal('inlineEditFileModal')">✕</button>
+      </div>
+      <form id="inlineEditFileForm">
+        <input type="hidden" id="iefId"/>
+        <div class="form-group">
+          <label>اسم / عنوان الملف</label>
+          <input type="text" id="iefTitle" required/>
+        </div>
+        <div class="form-group">
+          <label>وصف الملف</label>
+          <input type="text" id="iefDesc"/>
+        </div>
+        <div class="form-group" id="iefUrlGroup" style="display:none;">
+          <label>الرابط (URL)</label>
+          <input type="url" id="iefUrl" style="direction:ltr"/>
+        </div>
+        <div class="form-group">
+          <label>نقل إلى مجلد</label>
+          <select id="iefFolderSelect" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;"></select>
+        </div>
+        <div class="form-group">
+          <label>رقم الترتيب (الأصغر يظهر أولاً)</label>
+          <input type="number" id="iefSort" value="0"/>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button type="submit" class="f-btn primary" style="flex:1;justify-content:center;padding:11px;">💾 حفظ التعديلات</button>
+          <button type="button" class="f-btn" onclick="Platform.closeModal('inlineEditFileModal')">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 5. Modal: Add SPARK Post -->
+  <div class="p-modal-backdrop" id="sparkPostModal">
+    <div class="p-modal-box">
+      <div class="p-modal-head">
+        <h3>📢 نشر منشور جديد داخل SPARK</h3>
+        <button class="p-modal-close" onclick="Platform.closeModal('sparkPostModal')">✕</button>
+      </div>
+      <form id="sparkPostForm">
+        <input type="hidden" name="section" value="spark"/>
+        <div class="form-group">
+          <label>عنوان المنشور</label>
+          <input type="text" name="title" required placeholder="عنوان المنشور في SPARK..."/>
+        </div>
+        <div class="form-group">
+          <label>المحتوى</label>
+          <textarea name="content" rows="4" required
+                    style="width:100%;padding:12px;border-radius:12px;background:var(--input-bg);border:1.5px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;"></textarea>
+        </div>
+        <div class="form-group">
+          <label>مرفقات المنشور (اختياري — متعدد)</label>
+          <input type="file" name="attachments[]" multiple style="padding:8px;"/>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button type="submit" class="f-btn primary" style="flex:1;justify-content:center;padding:11px;">🚀 نشر في SPARK</button>
+          <button type="button" class="f-btn" onclick="Platform.closeModal('sparkPostModal')">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══ File Preview Modal (PDF, Images, Video, Text — Protected in SPARK) ══ -->
+  <div class="preview-backdrop" id="previewModal">
+    <div class="preview-box" style="position:relative;">
+      <div class="preview-head">
+        <h3 id="previewTitle">معاينة الملف</h3>
+        <div style="display:flex;gap:8px;">
+          <a id="previewDownloadBtn" href="#" download class="f-btn primary">⬇️ تحميل</a>
+          <button class="f-btn" onclick="Platform.closePreview()">✕ إغلاق</button>
+        </div>
+      </div>
+      <div class="preview-body" id="previewBody" style="position:relative;"></div>
+    </div>
+  </div>
+
+  <!-- ══ Mobile Bottom Navigation Bar ══ -->
+  <nav class="mobile-bottom-nav" id="mobileBottomNav">
+    <button class="mob-nav-item active" data-mob-view="home" onclick="Platform.switchView('home')">
+      <span class="m-ic">🏠</span>
+      <span>الرئيسية</span>
+    </button>
+    <button class="mob-nav-item" data-mob-view="projects" onclick="Platform.switchView('projects')">
+      <span class="m-ic">🚀</span>
+      <span>المشاريع</span>
+    </button>
+    <button class="mob-nav-item" data-mob-view="exams" onclick="Platform.switchView('exams')">
+      <span class="m-ic">📝</span>
+      <span>الاختبارات</span>
+    </button>
+    <button class="mob-nav-item" data-mob-view="spark" onclick="Platform.switchView('spark')">
+      <span class="m-ic">⚡</span>
+      <span>SPARK</span>
+    </button>
+    <button class="mob-nav-item" onclick="Platform.toggleMobileSidebar(true)">
+      <span class="m-ic">☰</span>
+      <span>الأقسام</span>
+    </button>
+  </nav>
+
+  <script src="../js/spark_manifest.js?v=8"></script>
+  <script src="../js/github_engine.js?v=8"></script>
+  <script src="../js/i18n.js?v=8"></script>
+  <script src="../js/app.js?v=8"></script>
+  <script src="../js/platform.js?v=8"></script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+/* register.css — Register page specific */
+
+.logo .icon {
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+  box-shadow: 0 8px 24px rgba(240,147,251,0.40);
+}
+
+.btn-register {
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+  box-shadow: 0 6px 20px rgba(240,147,251,0.38);
+}
+
+.name-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* Strength bar */
+.strength-bar {
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(128,128,128,0.18);
+  margin-top: 8px;
+  overflow: hidden;
+}
+.strength-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 4px;
+  transition: width 0.3s, background 0.3s;
+}
+
+@media (max-width: 480px) {
+  .name-row { grid-template-columns: 1fr; }
+}

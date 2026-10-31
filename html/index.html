@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>تسجيل الدخول</title>
+  <link rel="stylesheet" href="../css/main.css?v=4"/>
+  <link rel="stylesheet" href="../css/login.css?v=4"/>
+</head>
+<body>
+
+  <!-- ══ Top Controls Bar ══ -->
+  <div class="top-bar">
+
+    <!-- Theme Toggle -->
+    <button id="themeToggle" onclick="App.toggleTheme()" title="تبديل الوضع">🌙</button>
+
+    <!-- Language Selector -->
+    <div id="langWrap">
+      <button id="langToggleBtn">
+        <span class="globe">🌐</span>
+        <span id="langLabel">العربية</span>
+        <span id="langArrow">▾</span>
+      </button>
+
+      <div id="langPanel">
+        <!-- Featured boxes -->
+        <div class="lang-featured">
+          <div class="lang-pill active" data-lang="ar">العربية</div>
+          <div class="lang-pill"        data-lang="en">English</div>
+        </div>
+        <!-- Separator -->
+        <div class="lang-sep">Languages</div>
+      </div>
+    </div>
+
+  </div><!-- /top-bar -->
+
+  <!-- ══ Login Card ══ -->
+  <div class="card">
+
+    <div class="logo">
+      <div class="icon">🔐</div>
+      <h1 data-i18n="login.welcome">أهلاً بك</h1>
+      <p  data-i18n="login.subtitle">سجّل دخولك للمتابعة</p>
+    </div>
+
+    <form id="loginForm" novalidate>
+
+      <!-- Email / Phone -->
+      <div class="form-group">
+        <label data-i18n="login.emailPhone">البريد الإلكتروني أو رقم الهاتف</label>
+        <div class="phone-group">
+          <select id="loginCountryCode" class="country-select" title="مفتاح الدولة عند الدخول بالهاتف">
+            <option value="+973" selected>🇧🇭 +973</option>
+            <option value="+966">🇸🇦 +966</option>
+            <option value="+965">🇰🇼 +965</option>
+            <option value="+971">🇦🇪 +971</option>
+            <option value="+974">🇶🇦 +974</option>
+            <option value="+968">🇴🇲 +968</option>
+            <option value="+964">🇮🇶 +964</option>
+            <option value="+962">🇯🇴 +962</option>
+            <option value="+20">🇪🇬 +20</option>
+            <option value="+961">🇱🇧 +961</option>
+            <option value="+963">🇸🇾 +963</option>
+            <option value="+967">🇾🇪 +967</option>
+            <option value="+212">🇲🇦 +212</option>
+            <option value="+213">🇩🇿 +213</option>
+            <option value="+216">🇹🇳 +216</option>
+            <option value="+218">🇱🇾 +218</option>
+            <option value="+249">🇸🇩 +249</option>
+            <option value="+90">🇹🇷 +90</option>
+            <option value="+44">🇬🇧 +44</option>
+            <option value="+1">🇺🇸 +1</option>
+            <option value="+91">🇮🇳 +91</option>
+            <option value="+92">🇵🇰 +92</option>
+          </select>
+          <div class="input-wrap">
+            <span class="input-icon">📧</span>
+            <input type="text"
+                   data-i18n-ph="login.emailPhonePh"
+                   placeholder="example@mail.com أو 3XXXXXXX"
+                   data-field="identifier"
+                   autocomplete="username"
+                   style="direction:ltr;text-align:left"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Password -->
+      <div class="form-group">
+        <label data-i18n="login.password">كلمة المرور</label>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span>
+          <input type="password"
+                 data-i18n-ph="login.passwordPh"
+                 placeholder="••••••••"
+                 data-field="password"
+                 autocomplete="current-password"/>
+        </div>
+      </div>
+
+      <!-- Forgot -->
+      <div class="forgot">
+        <a href="#" id="forgotPasswordBtn" data-i18n="login.forgot">نسيت كلمة المرور؟</a>
+      </div>
+
+      <!-- Sign in -->
+      <button type="submit" class="btn btn-login" data-i18n="login.signIn">
+        تسجيل الدخول
+      </button>
+
+      <!-- Divider -->
+      <div class="divider">
+        <span data-i18n="login.or">أو</span>
+      </div>
+
+      <!-- Register link -->
+      <div class="foot-link">
+        <span data-i18n="login.noAccount">ليس لديك حساب؟</span>
+        <a href="register.html" data-i18n="login.createAccount"> إنشاء حساب جديد</a>
+      </div>
+
+    </form>
+  </div><!-- /card -->
+
+  <!-- ══ Forgot Password Modal ══ -->
+  <div id="forgotModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:16px;z-index:500;">
+    <div class="card" style="max-width:410px;padding:30px 26px;position:relative;">
+      <button type="button" id="closeForgotBtn" style="position:absolute;top:16px;inset-inline-end:18px;background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;">✕</button>
+      <h2 style="color:var(--text);font-size:19px;font-weight:700;margin-bottom:6px;">🔑 استعادة كلمة المرور</h2>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:18px;">أدخل البريد الإلكتروني ورقم الهاتف المسجلين في حسابك للتحقق وتعيين كلمة مرور جديدة.</p>
+
+      <!-- Step 1: Verify Identity -->
+      <form id="forgotVerifyForm">
+        <div class="form-group">
+          <label>البريد الإلكتروني المسجل</label>
+          <div class="input-wrap">
+            <span class="input-icon">📧</span>
+            <input type="email" id="fpEmail" placeholder="example@mail.com" style="direction:ltr;text-align:left" required/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>رقم الهاتف المسجل</label>
+          <div class="input-wrap">
+            <span class="input-icon">📱</span>
+            <input type="tel" id="fpPhone" placeholder="3XXXXXXX أو +9733XXXXXXX" style="direction:ltr;text-align:left" required/>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-login" style="margin-top:4px;">🔍 التحقق من الحساب</button>
+      </form>
+
+      <!-- Step 2: Set New Password (Shown after verification) -->
+      <form id="forgotResetForm" style="display:none;">
+        <div id="fpVerifiedBanner" style="background:rgba(74,222,128,0.14);border:1px solid rgba(74,222,128,0.35);color:#4ade80;padding:10px 12px;border-radius:10px;font-size:12.5px;font-weight:700;margin-bottom:14px;"></div>
+        <div class="form-group">
+          <label>كلمة المرور الجديدة (8 أحرف على الأقل)</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="fpNewPass" placeholder="••••••••" required/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>تأكيد كلمة المرور الجديدة</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔑</span>
+            <input type="password" id="fpConfirmPass" placeholder="••••••••" required/>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-login" style="margin-top:4px;">💾 حفظ كلمة المرور الجديدة</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="../js/spark_manifest.js?v=8"></script>
+  <script src="../js/github_engine.js?v=8"></script>
+  <script src="../js/i18n.js?v=8"></script>
+  <script src="../js/app.js?v=8"></script>
+  <script src="../js/auth.js?v=8"></script>
+</body>
+</html>

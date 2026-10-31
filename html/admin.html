@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>لوحة تحكم الإدارة — منصة SEC4</title>
+  <link rel="stylesheet" href="../css/main.css?v=7"/>
+  <link rel="stylesheet" href="../css/platform.css?v=7"/>
+  <style>
+    .admin-grid-2 {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 980px) {
+      .admin-grid-2 { grid-template-columns: 1fr; }
+    }
+    .panel-card {
+      background: var(--surface-bg);
+      border: 1px solid var(--surface-border);
+      border-radius: 20px;
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+    .panel-card h3 {
+      color: var(--text);
+      font-size: 16.5px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .chk-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 13px;
+      border-radius: 11px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      margin-bottom: 12px;
+      cursor: pointer;
+    }
+    .chk-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      accent-color: #667eea;
+    }
+    .chk-row span {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .admin-table th, .admin-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--divider);
+      text-align: start;
+      vertical-align: middle;
+    }
+    .admin-table th {
+      color: var(--text-muted);
+      background: rgba(128,128,128,0.08);
+      white-space: nowrap;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-admin { background: rgba(167,139,250,0.2); color: #a78bfa; }
+    .badge-user  { background: rgba(52,211,153,0.16); color: #34d399; }
+    .badge-used  { background: rgba(59,130,246,0.2);  color: #60a5fa; }
+    .badge-off   { background: rgba(248,113,113,0.2); color: #f87171; }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.68);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 700;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-box {
+      background: var(--panel-bg);
+      border: 1px solid var(--surface-border);
+      border-radius: 22px;
+      padding: 26px;
+      width: 100%;
+      max-width: 480px;
+      max-height: 92vh;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body class="platform-body">
+
+  <!-- ══ Mobile Sidebar Backdrop ══ -->
+  <div class="sidebar-backdrop" id="admSidebarBackdrop" onclick="document.getElementById('pSidebar').classList.remove('open');this.classList.remove('open');"></div>
+
+  <!-- ══ Admin Sidebar ══ -->
+  <aside class="p-sidebar" id="pSidebar">
+    <div class="sidebar-brand">
+      <div class="brand-badge" style="background:linear-gradient(135deg,#f093fb,#f5576c);">⚙️</div>
+      <div class="brand-text">
+        <h2>إدارة SEC4</h2>
+        <span>لوحة التحكم الكاملة</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">الأقسام الإدارية</div>
+      <button class="nav-btn active" data-tab="stats" onclick="AdminApp.switchTab('stats')">
+        <span class="nav-ic">📊</span> <span>إحصائيات المنصة</span>
+      </button>
+      <button class="nav-btn" data-tab="spark-codes" onclick="AdminApp.switchTab('spark-codes')" style="border:1px solid rgba(245,158,11,0.35);">
+        <span class="nav-ic">🔑</span> <span>إدارة أكواد SPARK</span>
+      </button>
+      <button class="nav-btn" data-tab="spark" onclick="AdminApp.switchTab('spark')">
+        <span class="nav-ic">⚡</span> <span>إدارة محتوى SPARK</span>
+      </button>
+      <button class="nav-btn" data-tab="projects" onclick="AdminApp.switchTab('projects')">
+        <span class="nav-ic">🚀</span> <span>إدارة المشاريع</span>
+      </button>
+      <button class="nav-btn" data-tab="exams" onclick="AdminApp.switchTab('exams')">
+        <span class="nav-ic">📝</span> <span>إدارة الاختبارات</span>
+      </button>
+      <button class="nav-btn" data-tab="schedule" onclick="AdminApp.switchTab('schedule')">
+        <span class="nav-ic">📅</span> <span>إدارة الجدول الدراسي</span>
+      </button>
+      <button class="nav-btn" data-tab="handouts" onclick="AdminApp.switchTab('handouts')">
+        <span class="nav-ic">📚</span> <span>إدارة الملازم</span>
+      </button>
+      <button class="nav-btn" data-tab="blackboard" onclick="AdminApp.switchTab('blackboard')">
+        <span class="nav-ic">🎓</span> <span>إدارة البلاكبورد</span>
+      </button>
+      <button class="nav-btn" data-tab="resources" onclick="AdminApp.switchTab('resources')">
+        <span class="nav-ic">🗂️</span> <span>إدارة الملفات والموارد</span>
+      </button>
+      <button class="nav-btn" data-tab="posts" onclick="AdminApp.switchTab('posts')">
+        <span class="nav-ic">📢</span> <span>المنشورات والإعلانات</span>
+      </button>
+      <button class="nav-btn" data-tab="notifications" onclick="AdminApp.switchTab('notifications')">
+        <span class="nav-ic">🔔</span> <span>إشعارات @الكل العاجلة</span>
+      </button>
+      <button class="nav-btn" data-tab="users" onclick="AdminApp.switchTab('users')">
+        <span class="nav-ic">👥</span> <span>إدارة حسابات الطلاب</span>
+      </button>
+      <button class="nav-btn" data-tab="backup" onclick="AdminApp.switchTab('backup')">
+        <span class="nav-ic">💾</span> <span>النسخ الاحتياطي والاسترجاع</span>
+      </button>
+
+      <div class="nav-section-label">التنقل</div>
+      <a href="home.html" class="nav-btn" style="color:var(--link);">
+        <span class="nav-ic">🏠</span> <span>العودة لواجهة الأقسام</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="nav-btn" style="color:#f87171;" onclick="AdminApp.logout()">
+        <span class="nav-ic">🚪</span> <span>تسجيل الخروج</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ══ Top Header Bar ══ -->
+  <header class="p-topbar">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="menu-toggle-btn" onclick="document.getElementById('pSidebar').classList.toggle('open');document.getElementById('admSidebarBackdrop').classList.toggle('open');">☰</button>
+      <h3 style="color:var(--text);font-size:16px;font-weight:700;">🛡️ لوحة تحكم مسؤول شعبة SEC4</h3>
+    </div>
+
+    <div class="topbar-actions">
+      <a href="home.html" class="f-btn primary">🏠 استعراض المنصة وإدارة الأقسام مباشرة</a>
+      <button id="themeToggle" class="icon-btn" onclick="App.toggleTheme()" title="الوضع الفاتح / الداكن">🌙</button>
+      <div class="user-chip">
+        <span class="u-avatar">🛡️</span>
+        <span id="adminHeaderName">Admin</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══ Main Admin Content ══ -->
+  <main class="p-main">
+
+    <!-- ─────────────────────────────────────────────────
+         TAB 1: PLATFORM STATISTICS
+    ───────────────────────────────────────────────── -->
+    <section id="tab-stats" class="adm-tab">
+      <div class="sec-head">
+        <h2>📊 إحصائيات منصة SEC4 الشاملة</h2>
+      </div>
+      <div class="sections-grid" id="statsCardsGrid"></div>
+
+      <div class="panel-card">
+        <h3>⚡ اختصارات الإدارة السريعة</h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="f-btn primary" onclick="AdminApp.switchTab('spark-codes')">🔑 توليد أكواد SPARK</button>
+          <button class="f-btn" onclick="AdminApp.switchTab('posts')">➕ نشر إعلان جديد</button>
+          <button class="f-btn" onclick="AdminApp.switchTab('notifications')">🔔 إرسال إشعار عاجل @الكل</button>
+          <button class="f-btn" onclick="AdminApp.switchTab('projects')">🚀 إدارة المشاريع</button>
+          <button class="f-btn" onclick="AdminApp.switchTab('exams')">📝 إدارة الاختبارات</button>
+          <button class="f-btn" onclick="AdminApp.switchTab('users')">👥 إدارة حسابات الطلاب</button>
+          <button class="f-btn" onclick="AdminApp.switchTab('backup')">💾 النسخ الاحتياطي</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         TAB 2: SPARK CODES MANAGEMENT (إدارة أكواد SPARK)
+    ───────────────────────────────────────────────── -->
+    <section id="tab-spark-codes" class="adm-tab" style="display:none;">
+      <div class="sec-head">
+        <h2>🔑 إدارة أكواد اشتراك SPARK</h2>
+      </div>
+
+      <!-- Summary Counters -->
+      <div class="sections-grid" style="margin-bottom:20px;">
+        <div class="section-card" style="cursor:default;">
+          <h3>إجمالي الأكواد</h3>
+          <p style="font-size:26px;font-weight:700;color:var(--text);" id="scSumTotal">0</p>
+        </div>
+        <div class="section-card" style="cursor:default;">
+          <h3>الأكواد المتاحة ✅</h3>
+          <p style="font-size:26px;font-weight:700;color:#34d399;" id="scSumAvail">0</p>
+        </div>
+        <div class="section-card" style="cursor:default;">
+          <h3>الأكواد المستخدمة 👤</h3>
+          <p style="font-size:26px;font-weight:700;color:#60a5fa;" id="scSumUsed">0</p>
+        </div>
+        <div class="section-card" style="cursor:default;">
+          <h3>الأكواد المعطلة 🚫</h3>
+          <p style="font-size:26px;font-weight:700;color:#f87171;" id="scSumDis">0</p>
+        </div>
+      </div>
+
+      <div class="admin-grid-2">
+        <!-- Left: Create Random / Bulk / Custom Codes -->
+        <div>
+          <div class="panel-card">
+            <h3>⚡ توليد أكواد عشوائية آمنة (فردي أو دفعة واحدة)</h3>
+            <form id="generateSparkCodesForm">
+              <div class="form-group">
+                <label>بادئة الكود (Prefix)</label>
+                <input type="text" id="scPrefix" value="SPARK" style="direction:ltr;text-transform:uppercase;" required/>
+              </div>
+              <div class="form-group">
+                <label>عدد الأكواد المطلوب إنشاؤها دفعة واحدة (1 إلى 100)</label>
+                <input type="number" id="scCount" value="5" min="1" max="100" required/>
+              </div>
+              <button type="submit" class="btn" style="background:linear-gradient(135deg,#f59e0b,#ef4444);margin-top:0;">
+                🎲 توليد الأكواد الآن
+              </button>
+            </form>
+          </div>
+
+          <div class="panel-card">
+            <h3>✍️ إنشاء كود مخصص بنفسك</h3>
+            <form id="customSparkCodeForm">
+              <div class="form-group">
+                <label>اكتب الكود المخصص</label>
+                <input type="text" id="scCustomInp" placeholder="مثال: SEC4-VIP-2026" style="direction:ltr;text-transform:uppercase;" required/>
+              </div>
+              <button type="submit" class="f-btn primary" style="width:100%;justify-content:center;padding:11px;">
+                ➕ حفظ الكود المخصص
+              </button>
+            </form>
+          </div>
+
+          <!-- Newly generated codes box for quick copy -->
+          <div class="panel-card" id="newlyGeneratedBox" style="display:none;">
+            <h3>📋 الأكواد المنشأة للتو</h3>
+            <textarea id="newlyGeneratedText" rows="4" readonly
+                      style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);direction:ltr;font-family:monospace;"></textarea>
+            <button type="button" class="f-btn primary" style="width:100%;justify-content:center;margin-top:8px;" onclick="AdminApp.copyGeneratedCodes()">
+              📑 نسخ جميع الأكواد المنشأة
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: All Codes Table with Status, Student Name, Date/Time -->
+        <div class="panel-card" style="padding:0;overflow:hidden;">
+          <div style="padding:18px 20px;border-bottom:1px solid var(--divider);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <h3 style="margin:0;">📜 سجل جميع أكواد SPARK</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <select id="scFilterStatus" onchange="AdminApp.filterSparkCodes()" style="padding:7px 12px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;font-size:12.5px;">
+                <option value="all">جميع الحالات</option>
+                <option value="available">متاح فقط ✅</option>
+                <option value="used">مستخدم فقط 👤</option>
+                <option value="disabled">معطل فقط 🚫</option>
+              </select>
+              <input type="search" id="scSearchInp" placeholder="🔍 بحث بالكود أو اسم الطالب..." oninput="AdminApp.filterSparkCodes()" style="padding:7px 12px;width:210px;"/>
+              <button class="f-btn" onclick="AdminApp.copyAllAvailableCodes()">📑 نسخ كل المتاح</button>
+            </div>
+          </div>
+
+          <div style="overflow-x:auto;">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>الكود</th>
+                  <th>الحالة</th>
+                  <th>الطالب الذي استخدمه</th>
+                  <th>تاريخ ووقت الاستخدام</th>
+                  <th>تاريخ الإنشاء</th>
+                  <th>إجراءات</th>
+                </tr>
+              </thead>
+              <tbody id="sparkCodesBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         TAB 3: POSTS & ANNOUNCEMENTS MANAGEMENT
+    ───────────────────────────────────────────────── -->
+    <section id="tab-posts" class="adm-tab" style="display:none;">
+      <div class="sec-head">
+        <h2>📢 إدارة المنشورات والإعلانات</h2>
+      </div>
+
+      <div class="admin-grid-2">
+        <div class="panel-card">
+          <h3 id="postFormTitle">➕ إضافة منشور / إعلان جديد</h3>
+          <form id="adminPostForm">
+            <input type="hidden" name="id" id="postEditId" value="0"/>
+
+            <div class="form-group">
+              <label>القسم المستهدف</label>
+              <select name="section" id="postSectionSel" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;">
+                <option value="general">🏠 الصفحة الرئيسية العامة</option>
+                <option value="spark">⚡ قسم SPARK للمشتركين</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>عنوان المنشور</label>
+              <input type="text" name="title" id="postTitleInp" placeholder="مثال: موعد الاختبار النصفي لمادة ENG11" required/>
+            </div>
+
+            <div class="form-group">
+              <label>نص أو وصف المنشور</label>
+              <textarea name="content" id="postContentInp" rows="5"
+                        style="width:100%;padding:12px;border-radius:12px;background:var(--input-bg);border:1.5px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;font-size:13.5px;"
+                        placeholder="اكتب تفاصيل الإعلان هنا..." required></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>إرفاق ملفات (يمكنك اختيار ملف أو عدة ملفات معاً)</label>
+              <input type="file" name="attachments[]" id="postFilesInp" multiple style="padding:9px;"/>
+            </div>
+
+            <label class="chk-row">
+              <input type="checkbox" name="is_pinned" id="postPinChk" value="1"/>
+              <span>📌 تثبيت هذا المنشور في الأعلى</span>
+            </label>
+
+            <label class="chk-row" id="notifyAllRow">
+              <input type="checkbox" name="notify_all" id="postNotifyChk" value="1"/>
+              <span>🔔 إرسال إشعار إلى @الكل (يصل لجميع الطلاب)</span>
+            </label>
+
+            <div style="display:flex;gap:8px;">
+              <button type="submit" class="btn" style="background:var(--accent-grad);margin-top:0;">🚀 نشر / حفظ المنشور</button>
+              <button type="button" id="cancelPostEditBtn" class="f-btn" style="display:none;" onclick="AdminApp.resetPostForm()">إلغاء</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel-card">
+          <h3>📋 المنشورات الحالية</h3>
+          <div id="adminPostsList" class="posts-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         TAB 4: @ALL NOTIFICATIONS
+    ───────────────────────────────────────────────── -->
+    <section id="tab-notifications" class="adm-tab" style="display:none;">
+      <div class="sec-head">
+        <h2>🔔 إدارة الإشعارات وإرسال تنبيه عاجل إلى @الكل</h2>
+      </div>
+
+      <div class="admin-grid-2">
+        <div class="panel-card">
+          <h3>📣 إرسال إشعار فوري إلى @الكل (بدون منشور)</h3>
+          <form id="broadcastForm">
+            <div class="form-group">
+              <label>عنوان الإشعار العاجل</label>
+              <input type="text" id="bcTitle" placeholder="مثال: تذكير هام بتسليم المشروع اليوم" required/>
+            </div>
+            <div class="form-group">
+              <label>نص الرسالة</label>
+              <textarea id="bcMessage" rows="4"
+                        style="width:100%;padding:12px;border-radius:12px;background:var(--input-bg);border:1.5px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;font-size:13.5px;"
+                        placeholder="اكتب نص التنبيه ليظهر في جرس الإشعارات لدى جميع الطلاب..." required></textarea>
+            </div>
+            <div class="form-group">
+              <label>رابط انتقال عند الضغط (اختياري)</label>
+              <input type="text" id="bcLink" placeholder="مثال: home.html أو رابط خارجي" style="direction:ltr"/>
+            </div>
+            <button type="submit" class="btn" style="background:linear-gradient(135deg,#f093fb,#f5576c);margin-top:0;">
+              🔔 إرسال الإشعار إلى @الكل الآن
+            </button>
+          </form>
+        </div>
+
+        <div class="panel-card">
+          <h3>📜 سجل الإشعارات المرسلة</h3>
+          <div id="adminNotifsList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         UNIFIED FILE & FOLDER MANAGER
+         (Projects, Exams, Handouts, Blackboard, Resources, SPARK)
+    ───────────────────────────────────────────────── -->
+    <section id="tab-filemanager" class="adm-tab" style="display:none;">
+      <div class="sec-head">
+        <h2 id="admFmHeaderTitle">🗂️ إدارة القسم</h2>
+      </div>
+
+      <!-- Subject Sub-Tabs (ENG11..SSO) -->
+      <div class="subject-tabs" id="admSubjectTabs">
+        <button class="subject-tab active" data-subj="ENG11" onclick="AdminApp.selectSubject('ENG11')">ENG11</button>
+        <button class="subject-tab" data-subj="ENG12" onclick="AdminApp.selectSubject('ENG12')">ENG12</button>
+        <button class="subject-tab" data-subj="ENG13" onclick="AdminApp.selectSubject('ENG13')">ENG13</button>
+        <button class="subject-tab" data-subj="ENG14" onclick="AdminApp.selectSubject('ENG14')">ENG14</button>
+        <button class="subject-tab" data-subj="SSO" onclick="AdminApp.selectSubject('SSO')">SSO</button>
+      </div>
+
+      <div class="admin-grid-2">
+        <div>
+          <!-- Create Folder Card -->
+          <div class="panel-card">
+            <h3>📁 إنشاء مجلد في المسار الحالي</h3>
+            <form id="createFolderForm" style="display:flex;gap:8px;">
+              <input type="text" id="newFolderName" placeholder="اسم المجلد الجديد..." required/>
+              <button type="submit" class="f-btn primary" style="white-space:nowrap;">➕ إنشاء</button>
+            </form>
+          </div>
+
+          <!-- Upload Single or Multiple Files Card -->
+          <div class="panel-card">
+            <h3>⬆️ رفع ملفات (PDF, ZIP, RAR, PPT, DOC, XLS, MP4, صور، TXT)</h3>
+            <div class="limits-note">الحد الأقصى لحجم الملف الواحد: 150MB — يدعم رفع عدة ملفات معاً.</div>
+            <form id="uploadFilesForm">
+              <div class="form-group">
+                <label>اختر ملفاً أو عدة ملفات دفعة واحدة</label>
+                <input type="file" name="files[]" id="admFileInput" multiple required style="padding:9px;"/>
+              </div>
+              <div class="form-group">
+                <label>عنوان مخصص <span class="note">(اختياري)</span></label>
+                <input type="text" name="title" id="admFileTitle" placeholder="يُترك فارغاً لاستخدام اسم الملف الأصلي"/>
+              </div>
+              <div class="form-group">
+                <label>وصف أو ملاحظات على الملف (اختياري)</label>
+                <input type="text" name="description" id="admFileDesc" placeholder="مثال: نموذج اختبار الفصل الأول مع الحل"/>
+              </div>
+
+              <div class="upload-progress-wrap" id="admUploadProgWrap">
+                <div class="upload-progress-bar">
+                  <div class="upload-progress-fill" id="admUploadProgFill"></div>
+                </div>
+                <div class="upload-progress-text" id="admUploadProgText">0%</div>
+              </div>
+
+              <button type="submit" id="admUploadBtn" class="btn" style="background:var(--accent-grad);margin-top:0;">⬆️ رفع وحفظ في المجلد الحالي</button>
+            </form>
+          </div>
+
+          <!-- Add Direct Link Card -->
+          <div class="panel-card">
+            <h3>🔗 إضافة رابط مباشر</h3>
+            <form id="addLinkForm">
+              <div class="form-group">
+                <label>عنوان الرابط</label>
+                <input type="text" id="linkTitleInp" placeholder="مثال: رابط المحاضرة المسجلة الأسبوع 4" required/>
+              </div>
+              <div class="form-group">
+                <label>الرابط (URL)</label>
+                <input type="url" id="linkUrlInp" placeholder="https://..." style="direction:ltr" required/>
+              </div>
+              <div class="form-group">
+                <label>شرح أو ملاحظات</label>
+                <input type="text" id="linkDescInp" placeholder="شرح مختصر للطلاب..."/>
+              </div>
+              <button type="submit" class="f-btn primary" style="width:100%;justify-content:center;padding:11px;">🔗 إضافة الرابط</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Right Column: Interactive Folder & File Explorer -->
+        <div class="fm-box" style="margin-bottom:0;">
+          <div class="fm-toolbar">
+            <div class="breadcrumbs" id="admBreadcrumbs"></div>
+            <div class="fm-controls">
+              <input type="search" id="admFmSearch" placeholder="🔍 بحث في هذا المجلد..." oninput="AdminApp.filterFm()"/>
+            </div>
+          </div>
+
+          <div id="admFoldersSection">
+            <h4 style="color:var(--text-muted);font-size:12.5px;margin-bottom:10px;">📁 المجلدات (اضغط للدخول لداخل المجلد)</h4>
+            <div class="folders-grid" id="admFoldersGrid"></div>
+          </div>
+
+          <div id="admFilesSection">
+            <h4 style="color:var(--text-muted);font-size:12.5px;margin-bottom:10px;">📄 الملفات والروابط في هذا المجلد</h4>
+            <div class="files-grid" id="admFilesGrid"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         TAB: SCHEDULE MANAGEMENT
+    ───────────────────────────────────────────────── -->
+    <section id="tab-schedule" class="adm-tab" style="display:none;">
+      <div class="sec-head">
+        <h2>📅 إدارة الجدول الدراسي لشعبة SEC4</h2>
+      </div>
+
+      <div class="admin-grid-2">
+        <div>
+          <div class="panel-card">
+            <h3>➕ إضافة محاضرة / حصة للجدول التفاعلي</h3>
+            <form id="scheduleEntryForm">
+              <input type="hidden" id="schedEditId" value="0"/>
+              <div class="form-group">
+                <label>اليوم</label>
+                <select id="schedDay" style="width:100%;padding:11px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;">
+                  <option value="الأحد">الأحد</option>
+                  <option value="الإثنين">الإثنين</option>
+                  <option value="الثلاثاء">الثلاثاء</option>
+                  <option value="الأربعاء">الأربعاء</option>
+                  <option value="الخميس">الخميس</option>
+                </select>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group">
+                  <label>من الساعة</label>
+                  <input type="text" id="schedStart" placeholder="08:00 AM" style="direction:ltr" required/>
+                </div>
+                <div class="form-group">
+                  <label>إلى الساعة</label>
+                  <input type="text" id="schedEnd" placeholder="09:30 AM" style="direction:ltr" required/>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>المادة</label>
+                <input type="text" id="schedSubj" placeholder="مثال: ENG11" required/>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group">
+                  <label>القاعة / المبنى</label>
+                  <input type="text" id="schedRoom" placeholder="Room 204"/>
+                </div>
+                <div class="form-group">
+                  <label>المحاضر</label>
+                  <input type="text" id="schedInst" placeholder="اسم الدكتور/الأستاذ"/>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>ملاحظات</label>
+                <input type="text" id="schedNotes" placeholder="حضوري / أونلاين..."/>
+              </div>
+              <button type="submit" class="btn" style="background:var(--accent-grad);margin-top:0;">💾 حفظ في الجدول</button>
+            </form>
+          </div>
+
+          <div class="panel-card">
+            <h3>🖼️ رفع صورة أو PDF للجدول الكامل</h3>
+            <form id="scheduleFileUploadForm">
+              <div class="form-group">
+                <label>اختر ملف صورة أو PDF للجدول</label>
+                <input type="file" name="files[]" accept=".pdf,image/*" required style="padding:9px;"/>
+              </div>
+              <div class="form-group">
+                <label>عنوان الملف</label>
+                <input type="text" name="title" placeholder="مثال: الجدول الرسمي للفصل الدراسي الأول"/>
+              </div>
+              <button type="submit" class="f-btn primary" style="width:100%;justify-content:center;padding:11px;">⬆️ رفع ملف الجدول</button>
+            </form>
+          </div>
+        </div>
+
+        <div>
+          <div class="panel-card">
+            <h3>📋 حصص الجدول التفاعلي الحالية</h3>
+            <div style="overflow-x:auto;">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>اليوم</th>
+                    <th>الوقت</th>
+                    <th>المادة</th>
+                    <th>القاعة</th>
+                    <th>إجراء</th>
+                  </tr>
+                </thead>
+                <tbody id="admScheduleBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <h3>🖼️ ملفات وصور الجدول المرفوعة</h3>
+            <div class="files-grid" id="admScheduleFilesGrid"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         TAB: STUDENT ACCOUNTS MANAGEMENT
+    ───────────────────────────────────────────────── -->
+    <section id="tab-users" class="adm-tab" style="display:none;">
+      <div class="sec-head">
+        <h2>👥 إدارة حسابات الطلاب والصلاحيات</h2>
+        <input type="search" id="userSearchInput" placeholder="🔍 بحث بالاسم أو البريد أو الرقم..."
+               style="max-width:280px;padding:9px 14px;" oninput="AdminApp.filterUsers()"/>
+      </div>
+
+      <div class="panel-card" style="overflow-x:auto;padding:0;">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>الاسم</th>
+              <th>البريد الإلكتروني</th>
+              <th>رقم الهاتف</th>
+              <th>الحالة</th>
+              <th>الصلاحية</th>
+              <th>تاريخ التسجيل</th>
+              <th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="admUsersBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────
+         TAB: BACKUP & RESTORE (النسخ الاحتياطي والاسترجاع)
+    ───────────────────────────────────────────────── -->
+    <section id="tab-backup" class="adm-tab" style="display:none;">
+      <div class="sec-head">
+        <h2>💾 النسخ الاحتياطي واسترجاع بيانات المنصة</h2>
+      </div>
+
+      <div class="admin-grid-2">
+        <div>
+          <div class="panel-card">
+            <h3>📦 إنشاء أو تحميل نسخة احتياطية كاملة</h3>
+            <p style="color:var(--text-muted);font-size:13px;line-height:1.7;margin-bottom:16px;">
+              تتضمن النسخة الاحتياطية جميع حسابات الطلاب، المنشورات، المجلدات، سجلات الملفات، الجدول الدراسي، وأكواد واشتراكات SPARK.
+            </p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <button class="btn" style="background:var(--accent-grad);margin-top:0;" onclick="AdminApp.createServerSnapshot()">
+                ☁️ حفظ نسخة احتياطية فورية على الخادم
+              </button>
+              <a href="../api/backup.php?mode=download" class="f-btn primary" style="justify-content:center;padding:12px;">
+                ⬇️ تنزيل ملف النسخة الاحتياطية (JSON) إلى جهازك
+              </a>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <h3>🔄 استرجاع من ملف خارجي</h3>
+            <form id="restoreUploadForm">
+              <div class="form-group">
+                <label>اختر ملف نسخة احتياطية (.json)</label>
+                <input type="file" name="backup_file" accept=".json" required style="padding:9px;"/>
+              </div>
+              <button type="submit" class="f-btn" style="width:100%;justify-content:center;padding:11px;color:#fbbf24;border-color:rgba(251,191,36,0.4);">
+                ♻️ استرجاع البيانات من الملف المرفوع
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <h3>🗂️ النسخ الاحتياطية المحفوظة على الخادم</h3>
+          <div id="backupsListBox"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══ Modal 1: Edit File / Move to Folder ══ -->
+  <div class="modal-backdrop" id="editFileModal">
+    <div class="modal-box">
+      <h3 style="color:var(--text);margin-bottom:16px;">✏️ تعديل / نقل الملف أو الرابط</h3>
+      <form id="editFileForm">
+        <input type="hidden" id="efId"/>
+        <div class="form-group">
+          <label>العنوان / الاسم</label>
+          <input type="text" id="efTitle" required/>
+        </div>
+        <div class="form-group">
+          <label>الوصف أو الملاحظات</label>
+          <input type="text" id="efDesc"/>
+        </div>
+        <div class="form-group" id="efUrlWrap" style="display:none;">
+          <label>الرابط الخارجي (URL)</label>
+          <input type="url" id="efUrl" style="direction:ltr"/>
+        </div>
+        <div class="form-group">
+          <label>نقل إلى مجلد</label>
+          <select id="efFolderSelect" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;"></select>
+        </div>
+        <div class="form-group">
+          <label>رقم الترتيب (الأصغر يظهر أولاً)</label>
+          <input type="number" id="efSortOrder" value="0"/>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button type="submit" class="f-btn primary" style="flex:1;justify-content:center;padding:11px;">💾 حفظ</button>
+          <button type="button" class="f-btn" onclick="document.getElementById('editFileModal').classList.remove('open')">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══ Modal 2: Edit User Account ══ -->
+  <div class="modal-backdrop" id="editUserModal">
+    <div class="modal-box">
+      <h3 style="color:var(--text);margin-bottom:16px;">✏️ تعديل بيانات الطالب / الصلاحيات</h3>
+      <form id="editUserForm">
+        <input type="hidden" id="euId"/>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>الاسم الأول</label>
+            <input type="text" id="euFirst" style="direction:ltr" required/>
+          </div>
+          <div class="form-group">
+            <label>الاسم الأخير</label>
+            <input type="text" id="euLast" style="direction:ltr" required/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>البريد الإلكتروني</label>
+          <input type="email" id="euEmail" style="direction:ltr"/>
+        </div>
+        <div class="form-group">
+          <label>رقم الهاتف</label>
+          <input type="text" id="euPhone" style="direction:ltr"/>
+        </div>
+        <div class="form-group">
+          <label>كلمة مرور جديدة <span class="note">(اتركها فارغة لعدم التغيير)</span></label>
+          <input type="text" id="euPass" placeholder="اكتب كلمة المرور الجديدة..."/>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group">
+            <label>حالة الحساب</label>
+            <select id="euActive" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;">
+              <option value="1">✅ مفعّل (نشط)</option>
+              <option value="0">🚫 معطّل (محظور)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>الصلاحية</label>
+            <select id="euRole" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;">
+              <option value="user">👤 طالب (User)</option>
+              <option value="admin">🛡️ مدير (Admin)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button type="submit" class="f-btn primary" style="flex:1;justify-content:center;padding:11px;">💾 حفظ التعديلات</button>
+          <button type="button" class="f-btn" onclick="document.getElementById('editUserModal').classList.remove('open')">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="../js/spark_manifest.js?v=8"></script>
+  <script src="../js/github_engine.js?v=8"></script>
+  <script src="../js/i18n.js?v=8"></script>
+  <script src="../js/app.js?v=8"></script>
+  <script src="../js/admin.js?v=8"></script>
+</body>
+</html>

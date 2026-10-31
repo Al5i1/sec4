@@ -1,0 +1,9 @@
+# حجب مجلد صور SPARK الأصلي حتى لا يظهر أي ملف خام في مستودع GitHub
+# (يتم فقط رفع الملفات المشفّرة .spk داخل spark_vault/)
+uploads/spark/
+uploads/backups/
+GITHUB_UPLOAD_READY/
+spark_import.php
+build_github_vault.php
+.DS_Store
+Thumbs.db

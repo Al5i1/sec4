@@ -1,0 +1,11 @@
+/* login.css — Login page specific */
+
+.logo .icon {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  box-shadow: 0 8px 24px rgba(102,126,234,0.42);
+}
+
+.btn-login {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  box-shadow: 0 6px 20px rgba(102,126,234,0.38);
+}
