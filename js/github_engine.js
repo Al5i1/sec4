@@ -353,8 +353,8 @@
       if (!s || !s.id) return null;
       const found = db.users.find(u => Number(u.id) === Number(s.id) && Number(u.is_active) === 1);
       if (!found) return null;
-      // If password was changed on another device, invalidate old session on other devices
-      if (s.pwd_sig && found.password_plain && s.pwd_sig !== found.password_plain) {
+      // Invalidate any old pre-cloud session or any session where password/email/phone changed on another device
+      if (!s.pwd_sig || s.pwd_sig !== found.password_plain || s.email !== found.email || s.phone !== found.phone) {
         return null;
       }
       return found;
@@ -390,15 +390,8 @@
     const path   = uObj.pathname;
     const params = Object.fromEntries(uObj.searchParams.entries());
 
-    // Always force fresh cloud check on POST or auth/user endpoints
-    const forceFresh = method === 'POST' ||
-                       path.endsWith('/api/login.php') ||
-                       path.endsWith('/api/register.php') ||
-                       path.endsWith('/api/session.php') ||
-                       path.endsWith('/api/users.php') ||
-                       path.endsWith('/api/spark.php');
-
-    const db = await loadDB(forceFresh);
+    // Always fetch fresh state from Cloud DB so Laptop & Phone stay 100% identical
+    const db = await loadDB(true);
 
     let bodyData = {};
     if (options.body) {
@@ -1186,26 +1179,16 @@
     return jsonResponse({ success: true });
   }
 
-  /* ── Intercept fetch() & XMLHttpRequest when running on GitHub Pages ── */
+  /* ── Intercept fetch() & XMLHttpRequest across all environments (GitHub Pages + Localhost) ── */
   window.fetch = async function (input, init) {
     const urlStr = typeof input === 'string' ? input : (input.url || '');
     if (urlStr.includes('/api/')) {
-      if (isGitHubPages) {
-        return handleVirtualApi(urlStr, init);
-      }
-      try {
-        const res = await origFetch(input, init);
-        const ct  = res.headers.get('content-type') || '';
-        if (res.ok && ct.includes('application/json')) return res;
-        return handleVirtualApi(urlStr, init);
-      } catch {
-        return handleVirtualApi(urlStr, init);
-      }
+      return handleVirtualApi(urlStr, init);
     }
     return origFetch(input, init);
   };
 
-  /* Also patch XMLHttpRequest for file upload progress bars on GitHub Pages */
+  /* Also patch XMLHttpRequest for file upload progress bars */
   const OrigXHR = window.XMLHttpRequest;
   window.XMLHttpRequest = function () {
     const xhr = new OrigXHR();
@@ -1221,7 +1204,7 @@
     };
 
     xhr.send = function (body) {
-      if (isGitHubPages && targetUrl.includes('/api/')) {
+      if (targetUrl.includes('/api/')) {
         handleVirtualApi(targetUrl, { method: targetMethod, body }).then(async resp => {
           const text = await resp.text();
           Object.defineProperty(xhr, 'status', { value: resp.status });
