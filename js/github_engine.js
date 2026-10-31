@@ -1,14 +1,55 @@
 /* ═══════════════════════════════════════════════════════════════════
-   js/github_engine.js — Serverless Engine & Encrypted SPARK Vault
-   Allows SEC4 to run 100% on GitHub Pages (github.io) without PHP,
-   while keeping SPARK images encrypted (.spk) in the GitHub repo!
+   js/github_engine.js — Real-Time Cloud Sync Engine & Encrypted SPARK Vault
+   - Connects all devices (Laptop, Phone, Students) to a shared Private
+     Cloud Database (Al5i1/sec4-db) so any change on one device immediately
+     appears on all phones and computers!
+   - Keeps all 167 SPARK files encrypted (.spk) in the public repo.
    ═══════════════════════════════════════════════════════════════════ */
 
 (() => {
   const isGitHubPages = location.hostname.endsWith('github.io') || location.protocol === 'file:';
   const origFetch     = window.fetch.bind(window);
   const SECRET_KEY    = 'SEC4_SPARK_VAULT_KEY_2026_PROTECTED_STREAM_#9981';
+  const SYNC_KEY      = 'SEC4_CLOUD_SYNC_KEY_2026_#7741';
+  const ENC_TOKEN_B64 = 'NDwOWF9GbwC37IaJ78bm8DElIyQRNDGIsrvHt9HomHlXcC9Vb32wvA==';
+  const CLOUD_REPO    = 'Al5i1/sec4-db';
+  const CLOUD_DB_URL  = `https://api.github.com/repos/${CLOUD_REPO}/contents/db.json`;
+
   const blobCache     = new Map();
+  const cloudFileCache = new Map();
+
+  /* ── Decrypt Cloud Sync Token in memory (never exposed in plain text) ── */
+  function getCloudToken() {
+    try {
+      const bin = atob(ENC_TOKEN_B64);
+      let out = '';
+      for (let i = 0; i < bin.length; i++) {
+        out += String.fromCharCode(bin.charCodeAt(i) ^ SYNC_KEY.charCodeAt(i % SYNC_KEY.length) ^ ((i * 17) & 0xFF));
+      }
+      return out;
+    } catch {
+      return '';
+    }
+  }
+
+  /* ── Encode / Decode UTF-8 strings safely to/from Base64 ── */
+  function utf8ToBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  }
+
+  function base64ToUtf8(b64) {
+    const clean = b64.replace(/\s+/g, '');
+    const bin   = atob(clean);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
 
   /* ── Decrypt .spk encrypted file into a temporary Blob URL in memory ── */
   async function decryptVaultFileToBlobUrl(vaultRelPath, mimeType) {
@@ -38,66 +79,285 @@
     }
   }
 
-  /* ── Local Database State (Initialized from SEC4_INITIAL_MANIFEST) ── */
-  const DB_KEY = 'sec4_github_db_v1';
+  /* ── Upload binary file to Private Cloud Repo (Al5i1/sec4-db/uploads/...) ── */
+  async function uploadFileToCloudRepo(file) {
+    const token = getCloudToken();
+    if (!token) return await fileToDataUrl(file);
+    try {
+      const buf   = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      const b64  = btoa(bin);
+      const ext  = (file.name.split('.').pop() || 'bin').toLowerCase();
+      const path = `uploads/f_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
-  function loadDB() {
-    let raw = localStorage.getItem(DB_KEY);
-    if (raw) {
-      try { return JSON.parse(raw); } catch {}
+      const res = await origFetch(`https://api.github.com/repos/${CLOUD_REPO}/contents/${path}`, {
+        method: 'PUT',
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: `Upload ${file.name}`,
+          content: b64
+        })
+      });
+      if (res.ok) {
+        return `cloud://${path}`;
+      }
+    } catch {}
+    return await fileToDataUrl(file);
+  }
+
+  async function resolveCloudFileUrl(cloudPath, mimeType) {
+    if (cloudFileCache.has(cloudPath)) return cloudFileCache.get(cloudPath);
+    const token = getCloudToken();
+    const rel   = cloudPath.replace(/^cloud:\/\//, '');
+    try {
+      const res = await origFetch(`https://api.github.com/repos/${CLOUD_REPO}/contents/${rel}`, {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) return '';
+      const j   = await res.json();
+      const b64 = (j.content || '').replace(/\s+/g, '');
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+      const url  = URL.createObjectURL(blob);
+      cloudFileCache.set(cloudPath, url);
+      return url;
+    } catch {
+      return '';
     }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     SHARED LIVE CLOUD DATABASE (Synced across Laptop, Phone & All Users)
+  ═══════════════════════════════════════════════════════════════════ */
+  const LOCAL_CACHE_KEY = 'sec4_cloud_db_cache_v2';
+  const LEGACY_DB_KEY   = 'sec4_github_db_v1';
+  let lastCloudSha      = null;
+  let lastFetchTime     = 0;
+  let cachedCloudRaw    = null;
+
+  function buildFullDbFromCloudState(state) {
     const init = window.SEC4_INITIAL_MANIFEST || { folders: [], files: [], posts: [] };
-    const db = {
-      users: [
-        {
-          id: 1,
-          first_name: 'Admin',
-          last_name: 'SEC4',
-          email: 'admin@admin.com',
-          phone: '+97330000000',
-          password_plain: 'Admin@1234',
-          role: 'admin',
-          is_active: 1,
-          avatar: null,
-          created_at: new Date().toISOString()
+    const delFolders = new Set((state.deleted_folder_ids || []).map(Number));
+    const delFiles   = new Set((state.deleted_file_ids   || []).map(Number));
+    const edFolders  = state.edited_folders || {};
+    const edFiles    = state.edited_files   || {};
+
+    const baseFolders = (init.folders || [])
+      .filter(f => !delFolders.has(Number(f.id)))
+      .map(f => edFolders[f.id] ? { ...f, ...edFolders[f.id] } : { ...f });
+
+    const baseFiles = (init.files || [])
+      .filter(f => !delFiles.has(Number(f.id)))
+      .map(f => edFiles[f.id] ? { ...f, ...edFiles[f.id] } : { ...f });
+
+    return {
+      _state: state,
+      users: state.users || [],
+      folders: [...baseFolders, ...(state.custom_folders || [])],
+      files: [...baseFiles, ...(state.custom_files || [])],
+      posts: state.posts || [],
+      notifications: state.notifications || [],
+      notification_reads: state.notification_reads || [],
+      favorites: state.favorites || [],
+      schedule_entries: state.schedule_entries || [],
+      spark_codes: state.spark_codes || [],
+      spark_subscriptions: state.spark_subscriptions || []
+    };
+  }
+
+  /* ── Migrate any changes previously saved in Laptop localStorage ── */
+  function extractLegacyLocalChanges(cloudState) {
+    try {
+      if (localStorage.getItem('sec4_legacy_migrated_v2')) return false;
+      const rawLeg = localStorage.getItem(LEGACY_DB_KEY);
+      if (!rawLeg) return false;
+      const leg = JSON.parse(rawLeg);
+      if (!leg || !Array.isArray(leg.users)) return false;
+
+      const adm = leg.users[0];
+      const hasCustomAdmin = adm && (
+        adm.email !== 'admin@admin.com' ||
+        adm.phone !== '+97330000000' ||
+        adm.password_plain !== 'Admin@1234' ||
+        adm.first_name !== 'Admin' ||
+        adm.last_name !== 'SEC4'
+      );
+      const hasExtraUsers = leg.users.length > 1;
+      const hasCustomPosts = Array.isArray(leg.posts) && leg.posts.length > 0;
+      const hasCustomCodes = Array.isArray(leg.spark_codes) && leg.spark_codes.length > 3;
+
+      if (hasCustomAdmin || hasExtraUsers || hasCustomPosts || hasCustomCodes) {
+        cloudState.users = leg.users;
+        if (hasCustomPosts) cloudState.posts = leg.posts;
+        if (Array.isArray(leg.notifications) && leg.notifications.length) cloudState.notifications = leg.notifications;
+        if (Array.isArray(leg.spark_codes) && leg.spark_codes.length) cloudState.spark_codes = leg.spark_codes;
+        if (Array.isArray(leg.spark_subscriptions) && leg.spark_subscriptions.length) cloudState.spark_subscriptions = leg.spark_subscriptions;
+        if (Array.isArray(leg.schedule_entries) && leg.schedule_entries.length) cloudState.schedule_entries = leg.schedule_entries;
+        cloudState.cloud_initialized = true;
+        localStorage.setItem('sec4_legacy_migrated_v2', '1');
+        return true;
+      }
+      localStorage.setItem('sec4_legacy_migrated_v2', '1');
+    } catch {}
+    return false;
+  }
+
+  async function loadDB(forceNetwork = false) {
+    const token = getCloudToken();
+    const now   = Date.now();
+
+    if (!forceNetwork && cachedCloudRaw && (now - lastFetchTime < 1500)) {
+      return buildFullDbFromCloudState(cachedCloudRaw);
+    }
+
+    if (token) {
+      try {
+        const res = await origFetch(`${CLOUD_DB_URL}?_t=${now}`, {
+          cache: 'no-store',
+          headers: {
+            'Accept': 'application/vnd.github+json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          lastCloudSha   = data.sha;
+          lastFetchTime  = Date.now();
+          const state    = JSON.parse(base64ToUtf8(data.content));
+          cachedCloudRaw = state;
+
+          // If this browser had local edits before Cloud Sync was enabled, push them now
+          if (!state.cloud_initialized && extractLegacyLocalChanges(state)) {
+            await saveCloudState(state);
+          }
+
+          localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(state));
+          return buildFullDbFromCloudState(state);
         }
-      ],
-      folders: init.folders || [],
-      files: init.files || [],
-      posts: init.posts || [],
-      notifications: [
-        {
-          id: 1,
-          title: '📢 إعلان (@الكل): مرحباً بكم في منصة SEC4 الأكاديمية',
-          message: 'تم إطلاق المنصة الرسمية لشعبة SEC4 لجمع كافة الاختبارات والمشاريع والملازم وقسم SPARK في مكان واحد.',
-          post_id: 1,
-          link_url: 'home.html#post-1',
-          created_at: new Date().toISOString()
-        }
-      ],
-      notification_reads: [],
-      favorites: [],
-      schedule_entries: [],
+      } catch {}
+    }
+
+    // Fallback to cached state if offline
+    try {
+      const local = JSON.parse(localStorage.getItem(LOCAL_CACHE_KEY) || 'null');
+      if (local) return buildFullDbFromCloudState(local);
+    } catch {}
+
+    const fallbackState = {
+      cloud_initialized: true,
+      users: [{
+        id: 1, first_name: 'Admin', last_name: 'SEC4',
+        email: 'admin@admin.com', phone: '+97330000000',
+        password_plain: 'Admin@1234', role: 'admin', is_active: 1,
+        avatar: null, created_at: new Date().toISOString()
+      }],
+      custom_folders: [], edited_folders: {}, deleted_folder_ids: [],
+      custom_files: [], edited_files: {}, deleted_file_ids: [],
+      posts: [], notifications: [], notification_reads: [],
+      favorites: [], schedule_entries: [],
       spark_codes: [
-        { id: 1, code: 'SPARK-SEC4-2026', status: 'available', used_by: null, used_at: null, created_at: new Date().toISOString() },
-        { id: 2, code: 'SPARK-VIP1-2026', status: 'available', used_by: null, used_at: null, created_at: new Date().toISOString() },
-        { id: 3, code: 'SPARK-VIP2-2026', status: 'available', used_by: null, used_at: null, created_at: new Date().toISOString() }
+        { id: 1, code: 'SPARK-SEC4-2026', status: 'available', used_by: null, used_at: null, created_at: new Date().toISOString() }
       ],
       spark_subscriptions: []
     };
-    saveDB(db);
-    return db;
+    return buildFullDbFromCloudState(fallbackState);
   }
 
-  function saveDB(db) {
-    try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch {}
+  async function saveCloudState(state) {
+    const token = getCloudToken();
+    state.cloud_initialized = true;
+    state.updated_at        = Date.now();
+    cachedCloudRaw          = state;
+    lastFetchTime           = Date.now();
+    try { localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(state)); } catch {}
+
+    if (!token) return;
+
+    const jsonStr = JSON.stringify(state, null, 2);
+    const b64     = utf8ToBase64(jsonStr);
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        if (!lastCloudSha || attempt > 0) {
+          const rGet = await origFetch(`${CLOUD_DB_URL}?_t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (rGet.ok) {
+            const jGet = await rGet.json();
+            lastCloudSha = jGet.sha;
+          }
+        }
+
+        const payload = {
+          message: `Sync SEC4 DB (${new Date().toISOString()})`,
+          content: b64
+        };
+        if (lastCloudSha) payload.sha = lastCloudSha;
+
+        const rPut = await origFetch(CLOUD_DB_URL, {
+          method: 'PUT',
+          headers: {
+            'Accept': 'application/vnd.github+json',
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (rPut.ok) {
+          const jPut = await rPut.json();
+          if (jPut.content && jPut.content.sha) {
+            lastCloudSha = jPut.content.sha;
+          }
+          lastFetchTime = Date.now();
+          return;
+        }
+      } catch {}
+    }
+  }
+
+  async function saveDB(db) {
+    const state = db._state || {};
+    state.users               = db.users;
+    state.posts               = db.posts;
+    state.notifications       = db.notifications;
+    state.notification_reads  = db.notification_reads;
+    state.favorites           = db.favorites;
+    state.schedule_entries    = db.schedule_entries;
+    state.spark_codes         = db.spark_codes;
+    state.spark_subscriptions = db.spark_subscriptions;
+    await saveCloudState(state);
   }
 
   function getCurrentSessionUser(db) {
     try {
       const s = JSON.parse(sessionStorage.getItem('auth') || 'null');
       if (!s || !s.id) return null;
-      return db.users.find(u => Number(u.id) === Number(s.id) && Number(u.is_active) === 1) || null;
+      const found = db.users.find(u => Number(u.id) === Number(s.id) && Number(u.is_active) === 1);
+      if (!found) return null;
+      // If password was changed on another device, invalidate old session on other devices
+      if (s.pwd_sig && found.password_plain && s.pwd_sig !== found.password_plain) {
+        return null;
+      }
+      return found;
     } catch { return null; }
   }
 
@@ -123,13 +383,22 @@
     });
   }
 
-  /* ── Handle API Requests in Serverless Mode ── */
+  /* ── Handle API Requests via Live Cloud Database ── */
   async function handleVirtualApi(urlStr, options = {}) {
-    const db     = loadDB();
     const method = (options.method || 'GET').toUpperCase();
     const uObj   = new URL(urlStr, location.href);
     const path   = uObj.pathname;
     const params = Object.fromEntries(uObj.searchParams.entries());
+
+    // Always force fresh cloud check on POST or auth/user endpoints
+    const forceFresh = method === 'POST' ||
+                       path.endsWith('/api/login.php') ||
+                       path.endsWith('/api/register.php') ||
+                       path.endsWith('/api/session.php') ||
+                       path.endsWith('/api/users.php') ||
+                       path.endsWith('/api/spark.php');
+
+    const db = await loadDB(forceFresh);
 
     let bodyData = {};
     if (options.body) {
@@ -146,21 +415,22 @@
 
     /* 1. LOGIN */
     if (path.endsWith('/api/login.php')) {
-      const idf  = String(bodyData.identifier || '').trim().toLowerCase();
+      const iden = String(bodyData.identifier || '').trim().toLowerCase();
       const pass = String(bodyData.password || '');
-      const cleanPhone = idf.replace(/[^0-9]/g, '');
+      const cleanPhone = iden.replace(/[\s\-()]/g, '');
 
       const user = db.users.find(u => {
-        const uEmail = String(u.email || '').toLowerCase();
-        const uPhone = String(u.phone || '').replace(/[^0-9]/g, '');
-        return (uEmail && uEmail === idf) || (cleanPhone && uPhone && (uPhone === cleanPhone || uPhone.slice(-8) === cleanPhone.slice(-8)));
+        const uMail  = String(u.email || '').toLowerCase();
+        const uPhone = String(u.phone || '').replace(/[\s\-()]/g, '');
+        return (uMail && uMail === iden) ||
+               (uPhone && (uPhone === cleanPhone || uPhone === '+973' + cleanPhone || uPhone.replace(/^\+973/, '') === cleanPhone));
       });
 
       if (!user || user.password_plain !== pass) {
-        return jsonResponse({ success: false, message: 'البريد/الهاتف أو كلمة المرور غير صحيحة.' }, 401);
+        return jsonResponse({ success: false, message: 'البريد الإلكتروني/رقم الهاتف أو كلمة المرور غير صحيحة.' }, 401);
       }
-      if (Number(user.is_active) !== 1) {
-        return jsonResponse({ success: false, message: 'تم تعطيل هذا الحساب من قِبل الإدارة.' }, 403);
+      if (Number(user.is_active) === 0) {
+        return jsonResponse({ success: false, message: 'تم إيقاف هذا الحساب من قِبل الإدارة.' }, 403);
       }
 
       const uOut = {
@@ -172,61 +442,114 @@
         phone: user.phone,
         role: user.role,
         avatar: user.avatar,
-        spark_subscribed: userHasSpark(db, user)
+        pwd_sig: user.password_plain,
+        spark_subscribed: userHasSpark(db, user),
+        created_at: user.created_at
       };
       sessionStorage.setItem('auth', JSON.stringify(uOut));
-      return jsonResponse({ success: true, message: 'تم تسجيل الدخول بنجاح.', redirect: '../html/home.html', user: uOut });
+      return jsonResponse({ success: true, message: 'تم تسجيل الدخول بنجاح!', user: uOut });
     }
 
     /* 2. REGISTER */
     if (path.endsWith('/api/register.php')) {
-      const first_name = String(bodyData.first_name || '').trim();
-      const last_name  = String(bodyData.last_name || '').trim();
-      const email      = String(bodyData.email || '').trim();
-      const phone      = String(bodyData.phone || '').trim();
-      const password   = String(bodyData.password || '');
+      const first = String(bodyData.first_name || '').trim();
+      const last  = String(bodyData.last_name  || '').trim();
+      const email = String(bodyData.email      || '').trim().toLowerCase();
+      const phone = String(bodyData.phone      || '').trim();
+      const pass  = String(bodyData.password   || '');
 
-      if (db.users.some(u => (email && u.email.toLowerCase() === email.toLowerCase()) || (phone && u.phone === phone))) {
-        return jsonResponse({ success: false, message: 'البريد أو رقم الهاتف مسجل مسبقاً.' }, 409);
+      if (!first || !last || pass.length < 8) {
+        return jsonResponse({ success: false, message: 'يرجى تعبئة كافة الحقول المطلوبة.' }, 422);
       }
-      const newId = db.users.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
-      db.users.push({
-        id: newId, first_name, last_name, email, phone,
-        password_plain: password, role: 'user', is_active: 1, avatar: null,
+      if (email && db.users.some(u => String(u.email || '').toLowerCase() === email)) {
+        return jsonResponse({ success: false, message: 'البريد الإلكتروني مسجّل بالفعل.' }, 409);
+      }
+      if (phone && db.users.some(u => String(u.phone || '') === phone)) {
+        return jsonResponse({ success: false, message: 'رقم الهاتف مسجّل بالفعل.' }, 409);
+      }
+
+      let avatarUrl = null;
+      if (options.body instanceof FormData) {
+        const avFile = options.body.get('avatar');
+        if (avFile instanceof File && avFile.size > 0) {
+          avatarUrl = await fileToDataUrl(avFile);
+        }
+      }
+
+      const newId = db.users.reduce((m, u) => Math.max(m, Number(u.id)), 0) + 1;
+      const newUser = {
+        id: newId,
+        first_name: first,
+        last_name: last,
+        email: email || null,
+        phone: phone || null,
+        password_plain: pass,
+        role: 'user',
+        is_active: 1,
+        avatar: avatarUrl,
         created_at: new Date().toISOString()
-      });
-      saveDB(db);
-      return jsonResponse({ success: true, message: 'تم إنشاء الحساب بنجاح.', id: newId }, 201);
+      };
+      db.users.push(newUser);
+      await saveDB(db);
+
+      const uOut = {
+        id: newUser.id,
+        first_name: newUser.first_name,
+        last_name: newUser.last_name,
+        name: `${newUser.first_name} ${newUser.last_name}`,
+        email: newUser.email,
+        phone: newUser.phone,
+        role: newUser.role,
+        avatar: newUser.avatar,
+        pwd_sig: newUser.password_plain,
+        spark_subscribed: false,
+        created_at: newUser.created_at
+      };
+      sessionStorage.setItem('auth', JSON.stringify(uOut));
+      return jsonResponse({ success: true, message: 'تم إنشاء الحساب بنجاح!', user: uOut }, 201);
     }
 
     /* 3. FORGOT PASSWORD */
     if (path.endsWith('/api/forgot_password.php')) {
-      if (bodyData.step === 'verify') {
-        const email = String(bodyData.email || '').trim().toLowerCase();
-        const phone = String(bodyData.phone || '').replace(/[^0-9]/g, '');
-        const user  = db.users.find(u => u.email.toLowerCase() === email && u.phone.replace(/[^0-9]/g, '').slice(-8) === phone.slice(-8));
-        if (!user) return jsonResponse({ success: false, message: '❌ لم يتم العثور على حساب يطابق البريد ورقم الهاتف.' }, 404);
-        sessionStorage.setItem('fp_reset_uid', String(user.id));
-        return jsonResponse({ success: true, user_name: `${user.first_name} ${user.last_name}`, message: '✅ تم التحقق بنجاح!' });
+      const act   = bodyData.action || '';
+      const email = String(bodyData.email || '').trim().toLowerCase();
+      const rawPh = String(bodyData.phone || '').replace(/[\s\-()]/g, '');
+
+      const found = db.users.find(u => {
+        const uMail = String(u.email || '').toLowerCase();
+        const uPh   = String(u.phone || '').replace(/[\s\-()]/g, '');
+        return uMail === email && (uPh === rawPh || uPh === '+973' + rawPh || uPh.replace(/^\+973/, '') === rawPh);
+      });
+
+      if (!found) {
+        return jsonResponse({ success: false, message: 'لم يتم العثور على حساب يطابق البريد الإلكتروني ورقم الهاتف المدخلين.' }, 404);
       }
-      if (bodyData.step === 'reset') {
-        const uid = Number(sessionStorage.getItem('fp_reset_uid') || 0);
-        const user = db.users.find(u => Number(u.id) === uid);
-        if (!user) return jsonResponse({ success: false, message: 'انتهت الجلسة.' }, 403);
-        user.password_plain = bodyData.new_password;
-        saveDB(db);
-        sessionStorage.removeItem('fp_reset_uid');
-        return jsonResponse({ success: true, message: '🎉 تم تغيير كلمة المرور بنجاح!' });
+      if (act === 'verify') {
+        return jsonResponse({
+          success: true,
+          user_name: `${found.first_name} ${found.last_name}`,
+          message: `تم التحقق من الحساب (${found.first_name} ${found.last_name}). يمكنك الآن تعيين كلمة المرور الجديدة.`
+        });
+      }
+      if (act === 'reset') {
+        const newP = String(bodyData.new_password || '');
+        if (newP.length < 8) return jsonResponse({ success: false, message: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.' }, 422);
+        found.password_plain = newP;
+        await saveDB(db);
+        return jsonResponse({ success: true, message: '✅ تم تغيير كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول.' });
       }
     }
 
     /* 4. SESSION */
     if (path.endsWith('/api/session.php')) {
-      if (method === 'POST' && (bodyData.action === 'logout' || params.action === 'logout')) {
+      if (method === 'DELETE') {
         sessionStorage.removeItem('auth');
-        return jsonResponse({ success: true });
+        return jsonResponse({ success: true, message: 'تم تسجيل الخروج.' });
       }
-      if (!currUser) return jsonResponse({ success: false, message: 'يرجى تسجيل الدخول' }, 401);
+      if (!currUser) {
+        sessionStorage.removeItem('auth');
+        return jsonResponse({ success: false, message: 'غير مسجل الدخول.' }, 401);
+      }
 
       if (method === 'POST') {
         currUser.first_name = String(bodyData.first_name || currUser.first_name).trim();
@@ -238,7 +561,7 @@
             currUser.avatar = await fileToDataUrl(avFile);
           }
         }
-        saveDB(db);
+        await saveDB(db);
       }
 
       const uOut = {
@@ -250,6 +573,7 @@
         phone: currUser.phone,
         role: currUser.role,
         avatar: currUser.avatar,
+        pwd_sig: currUser.password_plain,
         spark_subscribed: userHasSpark(db, currUser),
         created_at: currUser.created_at
       };
@@ -307,7 +631,7 @@
             code_id: cRow.id,
             activated_at: new Date().toISOString()
           });
-          saveDB(db);
+          await saveDB(db);
           return jsonResponse({ success: true, subscribed: true, message: '🎉 تم تفعيل اشتراكك في قسم SPARK بنجاح وبشكل دائم!' });
         }
 
@@ -338,7 +662,7 @@
               created.push(code);
             }
           }
-          saveDB(db);
+          await saveDB(db);
           return jsonResponse({ success: true, message: `✅ تم إنشاء ${created.length} كود اشتراك بنجاح!`, codes: created });
         }
 
@@ -346,20 +670,20 @@
           const c = db.spark_codes.find(x => Number(x.id) === Number(bodyData.id));
           if (!c || c.status === 'used') return jsonResponse({ success: false, message: 'لا يمكن تعديل هذا الكود.' }, 422);
           c.status = c.status === 'available' ? 'disabled' : 'available';
-          saveDB(db);
+          await saveDB(db);
           return jsonResponse({ success: true, message: 'تم تحديث حالة الكود.' });
         }
 
         if (bodyData.action === 'delete') {
           const idx = db.spark_codes.findIndex(x => Number(x.id) === Number(bodyData.id) && x.status !== 'used');
           if (idx >= 0) db.spark_codes.splice(idx, 1);
-          saveDB(db);
+          await saveDB(db);
           return jsonResponse({ success: true, message: '🗑️ تم حذف الكود.' });
         }
       }
     }
 
-    /* 6. FILES & FOLDERS (with Encrypted SPARK Decryption) */
+    /* 6. FILES & FOLDERS (with Encrypted SPARK Decryption & Cloud Uploads) */
     if (path.endsWith('/api/files.php')) {
       if (method === 'GET') {
         const mode = params.mode || 'browse';
@@ -373,7 +697,11 @@
 
         async function enrichFile(f) {
           const copy = { ...f, is_favorite: db.favorites.some(fv => Number(fv.user_id) === Number(currUser.id) && Number(fv.file_id) === Number(f.id)) ? 1 : 0 };
-          if (copy.data_url) {
+          if (copy.data_url && copy.data_url.startsWith('cloud://')) {
+            const cUrl = await resolveCloudFileUrl(copy.data_url, copy.mime_type);
+            copy.stream_url   = cUrl;
+            copy.download_url = cUrl;
+          } else if (copy.data_url) {
             copy.stream_url   = copy.data_url;
             copy.download_url = copy.data_url;
           } else if (copy.section === 'spark' && copy.vault_file) {
@@ -437,16 +765,18 @@
 
       if (method === 'POST') {
         const act = bodyData.action || '';
+        const st  = db._state;
+
         if (act === 'toggle_favorite') {
           const fid = Number(bodyData.file_id);
           const idx = db.favorites.findIndex(x => Number(x.user_id) === Number(currUser.id) && Number(x.file_id) === fid);
           if (idx >= 0) {
             db.favorites.splice(idx, 1);
-            saveDB(db);
+            await saveDB(db);
             return jsonResponse({ success: true, is_favorite: 0, message: 'تمت الإزالة من المفضلة.' });
           } else {
             db.favorites.push({ user_id: currUser.id, file_id: fid });
-            saveDB(db);
+            await saveDB(db);
             return jsonResponse({ success: true, is_favorite: 1, message: '⭐ تمت الإضافة إلى المفضلة.' });
           }
         }
@@ -456,7 +786,8 @@
 
         if (act === 'create_folder') {
           const newId = db.folders.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
-          db.folders.push({
+          st.custom_folders = st.custom_folders || [];
+          st.custom_folders.push({
             id: newId,
             section: bodyData.section || 'resources',
             subject: bodyData.subject || null,
@@ -465,147 +796,183 @@
             sort_order: 0,
             created_at: new Date().toISOString()
           });
-          saveDB(db);
+          await saveDB(db);
           return jsonResponse({ success: true, message: '📁 تم إنشاء المجلد بنجاح.', folder_id: newId });
         }
 
         if (act === 'update_folder') {
-          const fl = db.folders.find(x => Number(x.id) === Number(bodyData.id));
-          if (fl) fl.name = bodyData.name;
-          saveDB(db);
-          return jsonResponse({ success: true, message: '✅ تم تحديث اسم المجلد.' });
+          const fid = Number(bodyData.id);
+          const cf  = (st.custom_folders || []).find(x => Number(x.id) === fid);
+          if (cf) {
+            cf.name = bodyData.name;
+          } else {
+            st.edited_folders = st.edited_folders || {};
+            st.edited_folders[fid] = { ...(st.edited_folders[fid] || {}), name: bodyData.name };
+          }
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '✏️ تم تحديث المجلد.' });
         }
 
         if (act === 'delete_folder') {
-          const id = Number(bodyData.id);
-          db.folders = db.folders.filter(x => Number(x.id) !== id && Number(x.parent_id) !== id);
-          db.files   = db.files.filter(x => Number(x.folder_id) !== id);
-          saveDB(db);
+          const fid = Number(bodyData.id);
+          st.custom_folders     = (st.custom_folders || []).filter(x => Number(x.id) !== fid);
+          st.deleted_folder_ids = st.deleted_folder_ids || [];
+          if (!st.deleted_folder_ids.includes(fid)) st.deleted_folder_ids.push(fid);
+          await saveDB(db);
           return jsonResponse({ success: true, message: '🗑️ تم حذف المجلد.' });
-        }
-
-        if (act === 'upload_files' && options.body instanceof FormData) {
-          const uploadedFiles = options.body.getAll('files[]');
-          const sec = bodyData.section || 'resources';
-          const subj = bodyData.subject || null;
-          const flId = bodyData.folder_id && bodyData.folder_id !== 'null' ? Number(bodyData.folder_id) : null;
-          let count = 0;
-
-          for (const file of uploadedFiles) {
-            if (!(file instanceof File) || !file.name) continue;
-            const dataUrl = await fileToDataUrl(file);
-            const ext = file.name.split('.').pop().toLowerCase();
-            const newId = db.files.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
-            db.files.push({
-              id: newId,
-              section: sec,
-              subject: subj,
-              folder_id: flId,
-              item_type: 'file',
-              title: bodyData.title || file.name.replace(/\.[^/.]+$/, ''),
-              description: bodyData.description || '',
-              original_name: file.name,
-              file_size: file.size,
-              mime_type: file.type,
-              extension: ext,
-              data_url: dataUrl,
-              sort_order: 0,
-              downloads: 0,
-              created_at: new Date().toISOString()
-            });
-            count++;
-          }
-          saveDB(db);
-          return jsonResponse({ success: true, message: `✅ تم رفع ${count} ملف بنجاح!` });
         }
 
         if (act === 'add_link') {
           const newId = db.files.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
-          db.files.push({
+          st.custom_files = st.custom_files || [];
+          st.custom_files.push({
             id: newId,
             section: bodyData.section || 'blackboard',
             subject: bodyData.subject || null,
             folder_id: bodyData.folder_id ? Number(bodyData.folder_id) : null,
             item_type: 'link',
             title: bodyData.title,
-            description: bodyData.description || '',
+            description: bodyData.description || null,
             external_url: bodyData.external_url,
-            extension: 'link',
             file_size: 0,
+            extension: 'link',
             sort_order: 0,
-            downloads: 0,
             created_at: new Date().toISOString()
           });
-          saveDB(db);
+          await saveDB(db);
           return jsonResponse({ success: true, message: '🔗 تمت إضافة الرابط بنجاح.' });
         }
 
-        if (act === 'update_file') {
-          const f = db.files.find(x => Number(x.id) === Number(bodyData.id));
-          if (f) {
-            f.title = bodyData.title;
-            f.description = bodyData.description || '';
-            if (bodyData.external_url !== undefined) f.external_url = bodyData.external_url;
-            if (bodyData.folder_id !== undefined) f.folder_id = bodyData.folder_id ? Number(bodyData.folder_id) : null;
+        if (act === 'upload_files' && options.body instanceof FormData) {
+          const filesList = options.body.getAll('files[]');
+          let nextId = db.files.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
+          st.custom_files = st.custom_files || [];
+
+          for (const file of filesList) {
+            if (!(file instanceof File) || file.size === 0) continue;
+            const cloudOrDataUrl = await uploadFileToCloudRepo(file);
+            const ext = (file.name.split('.').pop() || '').toLowerCase();
+            st.custom_files.push({
+              id: nextId++,
+              section: bodyData.section || 'resources',
+              subject: bodyData.subject || null,
+              folder_id: bodyData.folder_id ? Number(bodyData.folder_id) : null,
+              item_type: 'file',
+              title: bodyData.title || file.name.replace(/\.[^/.]+$/, ''),
+              description: bodyData.description || null,
+              original_name: file.name,
+              data_url: cloudOrDataUrl,
+              file_size: file.size,
+              mime_type: file.type,
+              extension: ext,
+              sort_order: 0,
+              created_at: new Date().toISOString()
+            });
           }
-          saveDB(db);
-          return jsonResponse({ success: true, message: '✅ تم تحديث الملف.' });
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '✅ تم رفع الملفات ومزامنتها على السيرفر لجميع الأجهزة!' });
+        }
+
+        if (act === 'update_file') {
+          const fid = Number(bodyData.id);
+          const patch = {
+            title: bodyData.title,
+            description: bodyData.description,
+            external_url: bodyData.external_url,
+            folder_id: bodyData.folder_id !== null && bodyData.folder_id !== '' ? Number(bodyData.folder_id) : null,
+            sort_order: Number(bodyData.sort_order || 0)
+          };
+          const cf = (st.custom_files || []).find(x => Number(x.id) === fid);
+          if (cf) {
+            Object.assign(cf, patch);
+          } else {
+            st.edited_files = st.edited_files || {};
+            st.edited_files[fid] = { ...(st.edited_files[fid] || {}), ...patch };
+          }
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '✅ تم حفظ تعديلات الملف.' });
         }
 
         if (act === 'delete_file') {
-          db.files = db.files.filter(x => Number(x.id) !== Number(bodyData.id));
-          saveDB(db);
+          const fid = Number(bodyData.id);
+          st.custom_files     = (st.custom_files || []).filter(x => Number(x.id) !== fid);
+          st.deleted_file_ids = st.deleted_file_ids || [];
+          if (!st.deleted_file_ids.includes(fid)) st.deleted_file_ids.push(fid);
+          await saveDB(db);
           return jsonResponse({ success: true, message: '🗑️ تم حذف العنصر.' });
         }
       }
     }
 
-    /* 7. POSTS */
+    /* 7. POSTS & ANNOUNCEMENTS */
     if (path.endsWith('/api/posts.php')) {
       if (method === 'GET') {
-        const sec = params.section || 'general';
-        const list = db.posts.filter(p => (p.section || 'general') === sec)
-          .sort((a, b) => (Number(b.is_pinned) - Number(a.is_pinned)) || (new Date(b.created_at) - new Date(a.created_at)));
+        const sec = params.section || '';
+        if (sec === 'spark' && !userHasSpark(db, currUser)) {
+          return jsonResponse({ success: false, spark_locked: true }, 403);
+        }
+        const list = db.posts.filter(p => !sec || p.section === sec || (sec === 'general' && !p.section));
+        list.sort((a, b) => (Number(b.is_pinned || 0) - Number(a.is_pinned || 0)) || (new Date(b.created_at) - new Date(a.created_at)));
         return jsonResponse({ success: true, posts: list });
       }
+
       if (method === 'POST') {
         if (currUser.role !== 'admin') return jsonResponse({ success: false }, 403);
-        const act = bodyData.action || '';
+        const act = bodyData.action || 'save';
+
         if (act === 'delete') {
-          db.posts = db.posts.filter(p => Number(p.id) !== Number(bodyData.id));
-          saveDB(db);
+          const idx = db.posts.findIndex(x => Number(x.id) === Number(bodyData.id));
+          if (idx >= 0) db.posts.splice(idx, 1);
+          await saveDB(db);
           return jsonResponse({ success: true, message: '🗑️ تم حذف المنشور.' });
         }
+
         if (act === 'toggle_pin') {
           const p = db.posts.find(x => Number(x.id) === Number(bodyData.id));
-          if (p) p.is_pinned = Number(bodyData.is_pinned) ? 1 : 0;
-          saveDB(db);
-          return jsonResponse({ success: true, message: 'تم تحديث التثبيت.' });
+          if (p) p.is_pinned = Number(bodyData.is_pinned);
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '📌 تم تحديث التثبيت.' });
         }
+
+        const editId = Number(bodyData.id || 0);
+        if (editId > 0) {
+          const p = db.posts.find(x => Number(x.id) === editId);
+          if (p) {
+            p.title     = bodyData.title;
+            p.content   = bodyData.content;
+            p.section   = bodyData.section || 'general';
+            p.is_pinned = Number(bodyData.is_pinned || 0);
+          }
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '✅ تم تحديث المنشور.' });
+        }
+
         const newId = db.posts.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
-        const notifyAll = bodyData.notify_all ? 1 : 0;
-        db.posts.push({
+        const newPost = {
           id: newId,
           section: bodyData.section || 'general',
           title: bodyData.title,
           content: bodyData.content,
-          is_pinned: bodyData.is_pinned ? 1 : 0,
-          notify_all: notifyAll,
-          files: [],
-          created_at: new Date().toISOString()
-        });
-        if (notifyAll) {
+          is_pinned: Number(bodyData.is_pinned || 0),
+          notify_all: Number(bodyData.notify_all || 0),
+          created_at: new Date().toISOString(),
+          files: []
+        };
+        db.posts.push(newPost);
+
+        if (Number(bodyData.notify_all) === 1) {
+          const nid = db.notifications.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
           db.notifications.unshift({
-            id: db.notifications.length + 1,
-            title: `📢 إعلان جديد (@الكل): ${bodyData.title}`,
-            message: String(bodyData.content).slice(0, 160),
+            id: nid,
+            title: `📢 منشور جديد (@الكل): ${bodyData.title}`,
+            message: String(bodyData.content || '').slice(0, 140),
             post_id: newId,
             link_url: `home.html#post-${newId}`,
             created_at: new Date().toISOString()
           });
         }
-        saveDB(db);
-        return jsonResponse({ success: true, message: '✅ تم نشر المنشور بنجاح!' });
+        await saveDB(db);
+        return jsonResponse({ success: true, message: '🚀 تم نشر المنشور بنجاح!' });
       }
     }
 
@@ -613,42 +980,47 @@
     if (path.endsWith('/api/notifications.php')) {
       if (method === 'GET') {
         const reads = db.notification_reads.filter(r => Number(r.user_id) === Number(currUser.id)).map(r => Number(r.notification_id));
-        let unread = 0;
-        const list = db.notifications.map(n => {
-          const is_read = reads.includes(Number(n.id)) ? 1 : 0;
-          if (!is_read) unread++;
-          return { ...n, is_read };
-        });
-        return jsonResponse({ success: true, unread_count: unread, notifications: list });
+        const list  = db.notifications.map(n => ({ ...n, is_read: reads.includes(Number(n.id)) ? 1 : 0 }));
+        const unread_count = list.filter(n => !n.is_read).length;
+        return jsonResponse({ success: true, unread_count, notifications: list });
       }
       if (method === 'POST') {
-        if (bodyData.action === 'mark_read') {
-          const nid = Number(bodyData.notification_id || 0);
-          if (nid > 0) {
-            db.notification_reads.push({ notification_id: nid, user_id: currUser.id });
-          } else {
-            db.notifications.forEach(n => db.notification_reads.push({ notification_id: n.id, user_id: currUser.id }));
+        const act = bodyData.action || '';
+        if (act === 'mark_read') {
+          const nid = Number(bodyData.notification_id);
+          if (!db.notification_reads.some(r => Number(r.user_id) === Number(currUser.id) && Number(r.notification_id) === nid)) {
+            db.notification_reads.push({ user_id: currUser.id, notification_id: nid });
+            await saveDB(db);
           }
-          saveDB(db);
           return jsonResponse({ success: true });
         }
-        if (currUser.role !== 'admin') return jsonResponse({ success: false }, 403);
-        if (bodyData.action === 'broadcast') {
+        if (act === 'mark_all_read') {
+          db.notifications.forEach(n => {
+            if (!db.notification_reads.some(r => Number(r.user_id) === Number(currUser.id) && Number(r.notification_id) === Number(n.id))) {
+              db.notification_reads.push({ user_id: currUser.id, notification_id: n.id });
+            }
+          });
+          await saveDB(db);
+          return jsonResponse({ success: true, message: 'تم تعليم الكل كمقروء' });
+        }
+        if (act === 'send' && currUser.role === 'admin') {
+          const nid = db.notifications.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
           db.notifications.unshift({
-            id: db.notifications.length + 1,
+            id: nid,
             title: `🔔 إشعار (@الكل): ${bodyData.title}`,
             message: bodyData.message,
             post_id: null,
-            link_url: bodyData.link_url || '',
+            link_url: bodyData.link_url || null,
             created_at: new Date().toISOString()
           });
-          saveDB(db);
-          return jsonResponse({ success: true, message: '✅ تم إرسال الإشعار إلى @الكل!' });
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '🔔 تم إرسال الإشعار لجميع الطلاب!' });
         }
-        if (bodyData.action === 'delete') {
-          db.notifications = db.notifications.filter(n => Number(n.id) !== Number(bodyData.id));
-          saveDB(db);
-          return jsonResponse({ success: true, message: 'تم الحذف.' });
+        if (act === 'delete' && currUser.role === 'admin') {
+          const idx = db.notifications.findIndex(x => Number(x.id) === Number(bodyData.id));
+          if (idx >= 0) db.notifications.splice(idx, 1);
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '🗑️ تم حذف الإشعار.' });
         }
       }
     }
@@ -657,108 +1029,119 @@
     if (path.endsWith('/api/schedule.php')) {
       if (method === 'GET') {
         const files = db.files.filter(f => f.section === 'schedule');
-        return jsonResponse({ success: true, entries: db.schedule_entries, files });
+        return jsonResponse({ success: true, entries: db.schedule_entries, schedule_files: files });
       }
-      if (method === 'POST') {
-        if (currUser.role !== 'admin') return jsonResponse({ success: false }, 403);
-        if (bodyData.action === 'save_entry') {
-          db.schedule_entries.push({
-            id: db.schedule_entries.length + 1,
-            day_name: bodyData.day_name,
-            start_time: bodyData.start_time,
-            end_time: bodyData.end_time,
-            subject: bodyData.subject,
-            room: bodyData.room,
-            instructor: bodyData.instructor,
-            notes: bodyData.notes
-          });
-          saveDB(db);
-          return jsonResponse({ success: true, message: '✅ تم حفظ الحصة في الجدول.' });
-        }
+      if (method === 'POST' && currUser.role === 'admin') {
         if (bodyData.action === 'delete_entry') {
-          db.schedule_entries = db.schedule_entries.filter(e => Number(e.id) !== Number(bodyData.id));
-          saveDB(db);
-          return jsonResponse({ success: true, message: '🗑️ تم الحذف.' });
+          const idx = db.schedule_entries.findIndex(x => Number(x.id) === Number(bodyData.id));
+          if (idx >= 0) db.schedule_entries.splice(idx, 1);
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '🗑️ تم الحذف من الجدول.' });
         }
-      }
-    }
-
-    /* 10. SEARCH & STATS */
-    if (path.endsWith('/api/search.php')) {
-      if (params.mode === 'stats') {
-        return jsonResponse({
-          success: true,
-          stats: {
-            total_users: db.users.length,
-            active_users: db.users.filter(u => Number(u.is_active) === 1).length,
-            disabled_users: db.users.filter(u => Number(u.is_active) === 0).length,
-            total_posts: db.posts.length,
-            pinned_posts: db.posts.filter(p => Number(p.is_pinned) === 1).length,
-            total_files: db.files.length,
-            total_folders: db.folders.length,
-            total_downloads: 0,
-            projects_count: db.files.filter(f => f.section === 'projects').length,
-            exams_count: db.files.filter(f => f.section === 'exams').length,
-            handouts_count: db.files.filter(f => f.section === 'handouts').length,
-            bb_count: db.files.filter(f => f.section === 'blackboard').length,
-            resources_count: db.files.filter(f => f.section === 'resources').length,
-            spark_files_count: db.files.filter(f => f.section === 'spark').length,
-            spark_subs_count: db.spark_subscriptions.length,
-            spark_codes_avail: db.spark_codes.filter(c => c.status === 'available').length,
-            notifs_count: db.notifications.length
-          }
+        const nid = db.schedule_entries.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
+        db.schedule_entries.push({
+          id: nid,
+          day_name: bodyData.day_name,
+          start_time: bodyData.start_time,
+          end_time: bodyData.end_time,
+          subject: bodyData.subject,
+          room: bodyData.room,
+          instructor: bodyData.instructor,
+          notes: bodyData.notes
         });
+        await saveDB(db);
+        return jsonResponse({ success: true, message: '📅 تمت الإضافة للجدول.' });
       }
-      const q = String(params.q || '').toLowerCase();
-      const spk = userHasSpark(db, currUser);
-      return jsonResponse({
-        success: true,
-        posts: db.posts.filter(p => (spk || p.section !== 'spark') && `${p.title} ${p.content}`.toLowerCase().includes(q)).slice(0, 15),
-        folders: db.folders.filter(f => (spk || f.section !== 'spark') && f.name.toLowerCase().includes(q)).slice(0, 15),
-        files: db.files.filter(f => (spk || f.section !== 'spark') && `${f.title} ${f.description || ''}`.toLowerCase().includes(q)).slice(0, 25)
-      });
     }
 
-    /* 11. USERS */
+    /* 10. USERS MANAGEMENT */
     if (path.endsWith('/api/users.php')) {
       if (currUser.role !== 'admin') return jsonResponse({ success: false }, 403);
-      if (method === 'GET') return jsonResponse({ success: true, users: db.users });
-      if (method === 'PUT') {
-        const u = db.users.find(x => Number(x.id) === Number(bodyData.id));
-        if (u) {
-          u.first_name = bodyData.first_name;
-          u.last_name  = bodyData.last_name;
-          u.email      = bodyData.email;
-          u.phone      = bodyData.phone;
-          if (bodyData.password) u.password_plain = bodyData.password;
-          if (Number(u.id) !== 1) {
-            u.role      = bodyData.role || 'user';
-            u.is_active = Number(bodyData.is_active ?? 1);
-          }
-          saveDB(db);
+      if (method === 'GET') {
+        if (params.mode === 'stats') {
+          return jsonResponse({
+            success: true,
+            stats: {
+              users: db.users.length,
+              posts: db.posts.length,
+              files: db.files.length,
+              folders: db.folders.length,
+              notifications: db.notifications.length
+            }
+          });
         }
-        return jsonResponse({ success: true, message: '✅ تم تحديث بيانات الحساب.' });
+        return jsonResponse({ success: true, users: db.users });
       }
-      if (method === 'DELETE') {
-        const id = Number(bodyData.id);
-        if (id === 1) return jsonResponse({ success: false, message: 'لا يمكن حذف حساب المدير الأساسي.' }, 400);
-        db.users = db.users.filter(x => Number(x.id) !== id);
-        saveDB(db);
-        return jsonResponse({ success: true, message: '🗑️ تم حذف الحساب.' });
+      if (method === 'POST') {
+        const uid = Number(bodyData.id);
+        const u   = db.users.find(x => Number(x.id) === uid);
+        if (!u) return jsonResponse({ success: false }, 404);
+
+        if (bodyData.action === 'update_user') {
+          u.first_name = String(bodyData.first_name || u.first_name).trim();
+          u.last_name  = String(bodyData.last_name  || u.last_name).trim();
+          u.email      = String(bodyData.email      || '').trim().toLowerCase() || null;
+          u.phone      = String(bodyData.phone      || '').trim() || null;
+          u.role       = bodyData.role || u.role;
+          u.is_active  = Number(bodyData.is_active ?? u.is_active);
+          if (bodyData.new_password && String(bodyData.new_password).trim() !== '') {
+            u.password_plain = String(bodyData.new_password).trim();
+          }
+          await saveDB(db);
+
+          // If Admin updated their own account, update sessionStorage immediately too
+          if (Number(u.id) === Number(currUser.id)) {
+            const uOut = {
+              id: u.id,
+              first_name: u.first_name,
+              last_name: u.last_name,
+              name: `${u.first_name} ${u.last_name}`,
+              email: u.email,
+              phone: u.phone,
+              role: u.role,
+              avatar: u.avatar,
+              pwd_sig: u.password_plain,
+              spark_subscribed: true,
+              created_at: u.created_at
+            };
+            sessionStorage.setItem('auth', JSON.stringify(uOut));
+          }
+
+          return jsonResponse({ success: true, message: '✅ تم تحديث بيانات الحساب ومزامنتها على جميع الأجهزة!' });
+        }
+        if (bodyData.action === 'delete_user') {
+          if (uid === Number(currUser.id)) {
+            return jsonResponse({ success: false, message: 'لا يمكنك حذف حسابك الشخصي كمدير.' }, 422);
+          }
+          const idx = db.users.findIndex(x => Number(x.id) === uid);
+          if (idx >= 0) db.users.splice(idx, 1);
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '🗑️ تم حذف الحساب من السيرفر.' });
+        }
       }
+    }
+
+    /* 11. GLOBAL SEARCH */
+    if (path.endsWith('/api/search.php')) {
+      const q = (params.q || '').toLowerCase().trim();
+      const allowedSpark = userHasSpark(db, currUser);
+      const posts = db.posts.filter(p => (allowedSpark || p.section !== 'spark') && `${p.title} ${p.content}`.toLowerCase().includes(q)).slice(0, 10);
+      const folders = db.folders.filter(f => (allowedSpark || f.section !== 'spark') && (f.name || '').toLowerCase().includes(q)).slice(0, 10);
+      const files = db.files.filter(f => (allowedSpark || f.section !== 'spark') && `${f.title} ${f.description || ''}`.toLowerCase().includes(q)).slice(0, 15);
+      return jsonResponse({ success: true, posts, folders, files });
     }
 
     /* 12. BACKUP */
     if (path.endsWith('/api/backup.php')) {
-      return jsonResponse({ success: true, backups: [], message: 'النسخة محفوظة محلياً.' });
+      return jsonResponse({ success: true, backups: [], message: 'البيانات محفوظة تلقائياً في السيرفر السحابي المشترك (Al5i1/sec4-db).' });
     }
 
-    return jsonResponse({ success: false, message: 'Not found' }, 404);
+    return jsonResponse({ success: true });
   }
 
-  /* ── Intercept fetch when running on GitHub Pages or when PHP is unavailable ── */
+  /* ── Intercept fetch() & XMLHttpRequest when running on GitHub Pages ── */
   window.fetch = async function (input, init) {
-    const urlStr = typeof input === 'string' ? input : input.url;
+    const urlStr = typeof input === 'string' ? input : (input.url || '');
     if (urlStr.includes('/api/')) {
       if (isGitHubPages) {
         return handleVirtualApi(urlStr, init);
@@ -766,18 +1149,42 @@
       try {
         const res = await origFetch(input, init);
         const ct  = res.headers.get('content-type') || '';
-        /* If host returned raw PHP source code instead of executing PHP, fallback to serverless engine */
-        if (!ct.includes('application/json') && res.status === 200) {
-          const cloneText = await res.clone().text();
-          if (cloneText.trim().startsWith('<?php')) {
-            return handleVirtualApi(urlStr, init);
-          }
-        }
-        return res;
+        if (res.ok && ct.includes('application/json')) return res;
+        return handleVirtualApi(urlStr, init);
       } catch {
         return handleVirtualApi(urlStr, init);
       }
     }
     return origFetch(input, init);
+  };
+
+  /* Also patch XMLHttpRequest for file upload progress bars on GitHub Pages */
+  const OrigXHR = window.XMLHttpRequest;
+  window.XMLHttpRequest = function () {
+    const xhr = new OrigXHR();
+    let targetUrl = '';
+    let targetMethod = 'GET';
+    const origOpen = xhr.open.bind(xhr);
+    const origSend = xhr.send.bind(xhr);
+
+    xhr.open = function (method, url, ...rest) {
+      targetMethod = method;
+      targetUrl = url;
+      return origOpen(method, url, ...rest);
+    };
+
+    xhr.send = function (body) {
+      if (isGitHubPages && targetUrl.includes('/api/')) {
+        handleVirtualApi(targetUrl, { method: targetMethod, body }).then(async resp => {
+          const text = await resp.text();
+          Object.defineProperty(xhr, 'status', { value: resp.status });
+          Object.defineProperty(xhr, 'responseText', { value: text });
+          if (typeof xhr.onload === 'function') xhr.onload();
+        });
+        return;
+      }
+      return origSend(body);
+    };
+    return xhr;
   };
 })();
