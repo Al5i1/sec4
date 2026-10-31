@@ -447,7 +447,7 @@
         created_at: user.created_at
       };
       sessionStorage.setItem('auth', JSON.stringify(uOut));
-      return jsonResponse({ success: true, message: 'تم تسجيل الدخول بنجاح!', user: uOut });
+      return jsonResponse({ success: true, message: 'تم تسجيل الدخول بنجاح!', redirect: 'home.html', user: uOut });
     }
 
     /* 2. REGISTER */
@@ -506,25 +506,25 @@
         created_at: newUser.created_at
       };
       sessionStorage.setItem('auth', JSON.stringify(uOut));
-      return jsonResponse({ success: true, message: 'تم إنشاء الحساب بنجاح!', user: uOut }, 201);
+      return jsonResponse({ success: true, message: 'تم إنشاء الحساب بنجاح!', redirect: 'home.html', user: uOut }, 201);
     }
 
     /* 3. FORGOT PASSWORD */
     if (path.endsWith('/api/forgot_password.php')) {
-      const act   = bodyData.action || '';
+      const act   = bodyData.step || bodyData.action || '';
       const email = String(bodyData.email || '').trim().toLowerCase();
       const rawPh = String(bodyData.phone || '').replace(/[\s\-()]/g, '');
 
-      const found = db.users.find(u => {
-        const uMail = String(u.email || '').toLowerCase();
-        const uPh   = String(u.phone || '').replace(/[\s\-()]/g, '');
-        return uMail === email && (uPh === rawPh || uPh === '+973' + rawPh || uPh.replace(/^\+973/, '') === rawPh);
-      });
-
-      if (!found) {
-        return jsonResponse({ success: false, message: 'لم يتم العثور على حساب يطابق البريد الإلكتروني ورقم الهاتف المدخلين.' }, 404);
-      }
       if (act === 'verify') {
+        const found = db.users.find(u => {
+          const uMail = String(u.email || '').toLowerCase();
+          const uPh   = String(u.phone || '').replace(/[\s\-()]/g, '');
+          return uMail === email && (uPh === rawPh || uPh === '+973' + rawPh || uPh.replace(/^\+973/, '') === rawPh);
+        });
+        if (!found) {
+          return jsonResponse({ success: false, message: 'لم يتم العثور على حساب يطابق البريد الإلكتروني ورقم الهاتف المدخلين.' }, 404);
+        }
+        sessionStorage.setItem('fp_verified_uid', String(found.id));
         return jsonResponse({
           success: true,
           user_name: `${found.first_name} ${found.last_name}`,
@@ -532,9 +532,17 @@
         });
       }
       if (act === 'reset') {
+        const fpUid = Number(sessionStorage.getItem('fp_verified_uid') || 0);
+        const found = db.users.find(u => Number(u.id) === fpUid);
+        if (!found) {
+          return jsonResponse({ success: false, message: 'انتهت جلسة التحقق، يرجى إعادة المحاولة.' }, 403);
+        }
         const newP = String(bodyData.new_password || '');
+        const cnfP = String(bodyData.confirm_password || newP);
         if (newP.length < 8) return jsonResponse({ success: false, message: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.' }, 422);
+        if (newP !== cnfP) return jsonResponse({ success: false, message: 'كلمتا المرور غير متطابقتين.' }, 422);
         found.password_plain = newP;
+        sessionStorage.removeItem('fp_verified_uid');
         await saveDB(db);
         return jsonResponse({ success: true, message: '✅ تم تغيير كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول.' });
       }

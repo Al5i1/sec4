@@ -123,7 +123,7 @@ if (loginForm) {
       if (data.success) {
         sessionStorage.setItem('auth', JSON.stringify(data.user));
         showToast('✅ ' + (data.message || 'تم تسجيل الدخول'));
-        setTimeout(() => location.href = data.redirect, 900);
+        setTimeout(() => location.href = data.redirect || 'home.html', 900);
       } else {
         showToast(data.message || 'خطأ في تسجيل الدخول', true);
         btn.disabled = false;
