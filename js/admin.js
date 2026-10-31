@@ -629,7 +629,7 @@ const AdminApp = (() => {
           <div class="file-card">
             <div class="file-title">🖼️ ${escapeHtml(f.title)}</div>
             <div class="file-actions" style="margin-top:8px;">
-              <a class="f-btn" href="../${escapeHtml(f.file_path)}" target="_blank">👁️ عرض</a>
+              <a class="f-btn" href="${escapeHtml(f.download_url || ('../' + f.file_path))}" target="_blank">👁️ عرض</a>
               <button class="f-btn" style="color:#f87171;" onclick="AdminApp.deleteFile(${f.id})">🗑️ حذف</button>
             </div>
           </div>

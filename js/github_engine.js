@@ -583,6 +583,29 @@
 
     if (!currUser) return jsonResponse({ success: false, message: 'يرجى تسجيل الدخول' }, 401);
 
+    async function enrichFile(f) {
+      const copy = {
+        ...f,
+        is_favorite: db.favorites.some(fv => Number(fv.user_id) === Number(currUser.id) && Number(fv.file_id) === Number(f.id)) ? 1 : 0
+      };
+      if (copy.data_url && copy.data_url.startsWith('cloud://')) {
+        const cUrl = await resolveCloudFileUrl(copy.data_url, copy.mime_type);
+        copy.stream_url   = cUrl;
+        copy.download_url = cUrl;
+      } else if (copy.data_url) {
+        copy.stream_url   = copy.data_url;
+        copy.download_url = copy.data_url;
+      } else if (copy.section === 'spark' && copy.vault_file) {
+        const blobUrl = await decryptVaultFileToBlobUrl(copy.vault_file, copy.mime_type);
+        copy.stream_url   = blobUrl;
+        copy.download_url = blobUrl;
+      } else if (copy.file_path) {
+        copy.stream_url   = '../' + copy.file_path;
+        copy.download_url = '../' + copy.file_path;
+      }
+      return copy;
+    }
+
     /* 5. SPARK CODES & SUBSCRIPTIONS */
     if (path.endsWith('/api/spark.php')) {
       if (method === 'GET') {
@@ -693,26 +716,6 @@
 
         if (sec === 'spark' && !userHasSpark(db, currUser)) {
           return jsonResponse({ success: false, spark_locked: true, message: 'قسم SPARK مخصص للمشتركين فقط.' }, 403);
-        }
-
-        async function enrichFile(f) {
-          const copy = { ...f, is_favorite: db.favorites.some(fv => Number(fv.user_id) === Number(currUser.id) && Number(fv.file_id) === Number(f.id)) ? 1 : 0 };
-          if (copy.data_url && copy.data_url.startsWith('cloud://')) {
-            const cUrl = await resolveCloudFileUrl(copy.data_url, copy.mime_type);
-            copy.stream_url   = cUrl;
-            copy.download_url = cUrl;
-          } else if (copy.data_url) {
-            copy.stream_url   = copy.data_url;
-            copy.download_url = copy.data_url;
-          } else if (copy.section === 'spark' && copy.vault_file) {
-            const blobUrl = await decryptVaultFileToBlobUrl(copy.vault_file, copy.mime_type);
-            copy.stream_url   = blobUrl;
-            copy.download_url = blobUrl;
-          } else if (copy.file_path) {
-            copy.stream_url   = '../' + copy.file_path;
-            copy.download_url = '../' + copy.file_path;
-          }
-          return copy;
         }
 
         if (mode === 'recent') {
@@ -913,7 +916,11 @@
         }
         const list = db.posts.filter(p => !sec || p.section === sec || (sec === 'general' && !p.section));
         list.sort((a, b) => (Number(b.is_pinned || 0) - Number(a.is_pinned || 0)) || (new Date(b.created_at) - new Date(a.created_at)));
-        return jsonResponse({ success: true, posts: list });
+        const enrichedPosts = await Promise.all(list.map(async p => ({
+          ...p,
+          files: await Promise.all((p.files || []).map(enrichFile))
+        })));
+        return jsonResponse({ success: true, posts: enrichedPosts });
       }
 
       if (method === 'POST') {
@@ -927,11 +934,40 @@
           return jsonResponse({ success: true, message: '🗑️ تم حذف المنشور.' });
         }
 
+        if (act === 'delete_attachment') {
+          const fid = Number(bodyData.file_id);
+          db.posts.forEach(p => {
+            if (Array.isArray(p.files)) {
+              p.files = p.files.filter(f => Number(f.id) !== fid);
+            }
+          });
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '🗑️ تم حذف المرفق.' });
+        }
+
         if (act === 'toggle_pin') {
           const p = db.posts.find(x => Number(x.id) === Number(bodyData.id));
           if (p) p.is_pinned = Number(bodyData.is_pinned);
           await saveDB(db);
           return jsonResponse({ success: true, message: '📌 تم تحديث التثبيت.' });
+        }
+
+        // Upload any post attachments to Cloud Repo
+        const uploadedAtts = [];
+        if (options.body instanceof FormData) {
+          const attFiles = options.body.getAll('attachments[]');
+          let attBaseId = Date.now();
+          for (const file of attFiles) {
+            if (!(file instanceof File) || file.size === 0) continue;
+            const cloudUrl = await uploadFileToCloudRepo(file);
+            uploadedAtts.push({
+              id: attBaseId++,
+              original_name: file.name,
+              data_url: cloudUrl,
+              file_size: file.size,
+              mime_type: file.type
+            });
+          }
         }
 
         const editId = Number(bodyData.id || 0);
@@ -942,6 +978,7 @@
             p.content   = bodyData.content;
             p.section   = bodyData.section || 'general';
             p.is_pinned = Number(bodyData.is_pinned || 0);
+            p.files     = [...(p.files || []), ...uploadedAtts];
           }
           await saveDB(db);
           return jsonResponse({ success: true, message: '✅ تم تحديث المنشور.' });
@@ -956,7 +993,7 @@
           is_pinned: Number(bodyData.is_pinned || 0),
           notify_all: Number(bodyData.notify_all || 0),
           created_at: new Date().toISOString(),
-          files: []
+          files: uploadedAtts
         };
         db.posts.push(newPost);
 
@@ -1028,8 +1065,9 @@
     /* 9. SCHEDULE */
     if (path.endsWith('/api/schedule.php')) {
       if (method === 'GET') {
-        const files = db.files.filter(f => f.section === 'schedule');
-        return jsonResponse({ success: true, entries: db.schedule_entries, schedule_files: files });
+        const rawFiles = db.files.filter(f => f.section === 'schedule');
+        const files    = await Promise.all(rawFiles.map(enrichFile));
+        return jsonResponse({ success: true, entries: db.schedule_entries, files, schedule_files: files });
       }
       if (method === 'POST' && currUser.role === 'admin') {
         if (bodyData.action === 'delete_entry') {
@@ -1127,7 +1165,8 @@
       const allowedSpark = userHasSpark(db, currUser);
       const posts = db.posts.filter(p => (allowedSpark || p.section !== 'spark') && `${p.title} ${p.content}`.toLowerCase().includes(q)).slice(0, 10);
       const folders = db.folders.filter(f => (allowedSpark || f.section !== 'spark') && (f.name || '').toLowerCase().includes(q)).slice(0, 10);
-      const files = db.files.filter(f => (allowedSpark || f.section !== 'spark') && `${f.title} ${f.description || ''}`.toLowerCase().includes(q)).slice(0, 15);
+      const rawFiles = db.files.filter(f => (allowedSpark || f.section !== 'spark') && `${f.title} ${f.description || ''}`.toLowerCase().includes(q)).slice(0, 15);
+      const files = await Promise.all(rawFiles.map(enrichFile));
       return jsonResponse({ success: true, posts, folders, files });
     }
 

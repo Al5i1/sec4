@@ -206,8 +206,8 @@ const Platform = (() => {
     const atts = (p.files || []).map(f => {
       const ext    = (f.original_name || '').split('.').pop();
       const isPrev = canPreview(ext, f.mime_type);
-      const url    = '../' + f.file_path;
-      const dlUrl  = isSpark ? (url + '&download=1') : url;
+      const url    = f.stream_url || ('../' + f.file_path);
+      const dlUrl  = f.download_url || (isSpark ? (url + '&download=1') : url);
       return `
         <div style="display:inline-flex;gap:6px;align-items:center;">
           ${isPrev ? `<button class="att-chip" onclick="Platform.openPreview('${escapeHtml(url)}', '${escapeHtml(f.original_name)}', '${escapeHtml(ext)}', ${isSpark})">👁️ معاينة: ${escapeHtml(f.original_name)}</button>` : ''}
