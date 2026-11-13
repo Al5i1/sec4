@@ -408,18 +408,20 @@
 
     /* 1. LOGIN */
     if (path.endsWith('/api/login.php')) {
-      const iden = String(bodyData.identifier || '').trim().toLowerCase();
+      const stripInvis = s => String(s || '').replace(/[\u200e\u200f\u202a-\u202e]/g, '').replace(/\u00a0/g, ' ').trim();
+      const iden = stripInvis(bodyData.identifier).toLowerCase();
       const pass = String(bodyData.password || '');
+      const cleanPass = stripInvis(pass);
       const cleanPhone = iden.replace(/[\s\-()]/g, '');
 
       const user = db.users.find(u => {
-        const uMail  = String(u.email || '').toLowerCase();
-        const uPhone = String(u.phone || '').replace(/[\s\-()]/g, '');
+        const uMail  = stripInvis(u.email).toLowerCase();
+        const uPhone = stripInvis(u.phone).replace(/[\s\-()]/g, '');
         return (uMail && uMail === iden) ||
                (uPhone && (uPhone === cleanPhone || uPhone === '+973' + cleanPhone || uPhone.replace(/^\+973/, '') === cleanPhone));
       });
 
-      if (!user || user.password_plain !== pass) {
+      if (!user || (user.password_plain !== pass && stripInvis(user.password_plain) !== cleanPass)) {
         return jsonResponse({ success: false, message: 'البريد الإلكتروني/رقم الهاتف أو كلمة المرور غير صحيحة.' }, 401);
       }
       if (Number(user.is_active) === 0) {
@@ -1093,9 +1095,10 @@
       }
     }
 
-    /* 10. USERS MANAGEMENT */
+    /* 10. USERS MANAGEMENT (Supports GET, POST, PUT, DELETE) */
     if (path.endsWith('/api/users.php')) {
-      if (currUser.role !== 'admin') return jsonResponse({ success: false }, 403);
+      if (currUser.role !== 'admin') return jsonResponse({ success: false, message: 'صلاحية مرفوضة' }, 403);
+
       if (method === 'GET') {
         if (params.mode === 'stats') {
           return jsonResponse({
@@ -1109,54 +1112,151 @@
             }
           });
         }
-        return jsonResponse({ success: true, users: db.users });
+        const enrichedUsers = db.users.map(u => ({
+          ...u,
+          spark_subscribed: userHasSpark(db, u)
+        }));
+        return jsonResponse({ success: true, users: enrichedUsers });
       }
-      if (method === 'POST') {
-        const uid = Number(bodyData.id);
-        const u   = db.users.find(x => Number(x.id) === uid);
-        if (!u) return jsonResponse({ success: false }, 404);
 
-        if (bodyData.action === 'update_user') {
-          u.first_name = String(bodyData.first_name || u.first_name).trim();
-          u.last_name  = String(bodyData.last_name  || u.last_name).trim();
-          u.email      = String(bodyData.email      || '').trim().toLowerCase() || null;
-          u.phone      = String(bodyData.phone      || '').trim() || null;
-          u.role       = bodyData.role || u.role;
-          u.is_active  = Number(bodyData.is_active ?? u.is_active);
-          if (bodyData.new_password && String(bodyData.new_password).trim() !== '') {
-            u.password_plain = String(bodyData.new_password).trim();
-          }
-          await saveDB(db);
+      const act = bodyData.action || (method === 'DELETE' ? 'delete_user' : (method === 'PUT' ? 'update_user' : ''));
+      const uid = Number(bodyData.id || params.id || 0);
 
-          // If Admin updated their own account, update sessionStorage immediately too
-          if (Number(u.id) === Number(currUser.id)) {
-            const uOut = {
-              id: u.id,
-              first_name: u.first_name,
-              last_name: u.last_name,
-              name: `${u.first_name} ${u.last_name}`,
-              email: u.email,
-              phone: u.phone,
-              role: u.role,
-              avatar: u.avatar,
-              pwd_sig: u.password_plain,
-              spark_subscribed: true,
-              created_at: u.created_at
-            };
-            sessionStorage.setItem('auth', JSON.stringify(uOut));
-          }
-
-          return jsonResponse({ success: true, message: '✅ تم تحديث بيانات الحساب ومزامنتها على جميع الأجهزة!' });
+      if (act === 'create_user') {
+        const first = String(bodyData.first_name || '').trim();
+        const last  = String(bodyData.last_name  || '').trim();
+        const email = String(bodyData.email      || '').trim().toLowerCase();
+        const phone = String(bodyData.phone      || '').trim();
+        const pass  = String(bodyData.password || bodyData.new_password || '').trim();
+        const role  = bodyData.role === 'admin' ? 'admin' : 'user';
+        if (!first || !last || pass.length < 4) {
+          return jsonResponse({ success: false, message: 'يرجى إدخال الاسم وكلمة المرور.' }, 422);
         }
-        if (bodyData.action === 'delete_user') {
-          if (uid === Number(currUser.id)) {
-            return jsonResponse({ success: false, message: 'لا يمكنك حذف حسابك الشخصي كمدير.' }, 422);
-          }
-          const idx = db.users.findIndex(x => Number(x.id) === uid);
-          if (idx >= 0) db.users.splice(idx, 1);
-          await saveDB(db);
-          return jsonResponse({ success: true, message: '🗑️ تم حذف الحساب من السيرفر.' });
+        if (email && db.users.some(u => String(u.email || '').toLowerCase() === email)) {
+          return jsonResponse({ success: false, message: 'البريد الإلكتروني مستخدم مسبقاً.' }, 409);
         }
+        if (phone && db.users.some(u => String(u.phone || '') === phone)) {
+          return jsonResponse({ success: false, message: 'رقم الهاتف مستخدم مسبقاً.' }, 409);
+        }
+        const newId = db.users.reduce((m, u) => Math.max(m, Number(u.id)), 0) + 1;
+        const newUser = {
+          id: newId,
+          first_name: first,
+          last_name: last,
+          email: email || null,
+          phone: phone || null,
+          password_plain: pass,
+          role,
+          is_active: 1,
+          avatar: null,
+          created_at: new Date().toISOString()
+        };
+        db.users.push(newUser);
+        if (Number(bodyData.spark_subscribed) === 1) {
+          db.spark_subscriptions.push({
+            id: db.spark_subscriptions.length + 1,
+            user_id: newId,
+            code_id: 0,
+            activated_at: new Date().toISOString()
+          });
+        }
+        await saveDB(db);
+        return jsonResponse({ success: true, message: '✅ تمت إضافة الحساب الجديد بنجاح!' });
+      }
+
+      if (act === 'toggle_spark') {
+        const u = db.users.find(x => Number(x.id) === uid);
+        if (!u) return jsonResponse({ success: false, message: 'المستخدم غير موجود' }, 404);
+        const subIdx = db.spark_subscriptions.findIndex(s => Number(s.user_id) === uid);
+        if (subIdx >= 0) {
+          db.spark_subscriptions.splice(subIdx, 1);
+          await saveDB(db);
+          return jsonResponse({ success: true, message: `🚫 تم إلغاء اشتراك SPARK للطالب ${u.first_name}.` });
+        } else {
+          db.spark_subscriptions.push({
+            id: db.spark_subscriptions.length + 1,
+            user_id: uid,
+            code_id: 0,
+            activated_at: new Date().toISOString()
+          });
+          await saveDB(db);
+          return jsonResponse({ success: true, message: `⚡ تم تفعيل اشتراك SPARK للطالب ${u.first_name} مباشرة!` });
+        }
+      }
+
+      if (act === 'delete_user') {
+        if (uid === Number(currUser.id)) {
+          return jsonResponse({ success: false, message: 'لا يمكنك حذف حسابك الشخصي كمدير.' }, 422);
+        }
+        const idx = db.users.findIndex(x => Number(x.id) === uid);
+        if (idx < 0) return jsonResponse({ success: false, message: 'الحساب غير موجود.' }, 404);
+        db.users.splice(idx, 1);
+        db.spark_subscriptions = db.spark_subscriptions.filter(s => Number(s.user_id) !== uid);
+        db.favorites = db.favorites.filter(fv => Number(fv.user_id) !== uid);
+        await saveDB(db);
+        return jsonResponse({ success: true, message: '🗑️ تم حذف الحساب نهائياً من قاعدة البيانات!' });
+      }
+
+      if (act === 'update_user') {
+        const u = db.users.find(x => Number(x.id) === uid);
+        if (!u) return jsonResponse({ success: false, message: 'الحساب غير موجود.' }, 404);
+
+        u.first_name = String(bodyData.first_name ?? u.first_name).trim();
+        u.last_name  = String(bodyData.last_name  ?? u.last_name).trim();
+        if (bodyData.email !== undefined) {
+          u.email = String(bodyData.email || '').trim().toLowerCase() || null;
+        }
+        if (bodyData.phone !== undefined) {
+          u.phone = String(bodyData.phone || '').trim() || null;
+        }
+        if (bodyData.role !== undefined) {
+          u.role = bodyData.role || u.role;
+        }
+        if (bodyData.is_active !== undefined) {
+          u.is_active = Number(bodyData.is_active);
+        }
+
+        const newPass = String(bodyData.password || bodyData.new_password || '').trim();
+        if (newPass !== '') {
+          u.password_plain = newPass;
+        }
+
+        if (bodyData.spark_subscribed !== undefined && u.role !== 'admin') {
+          const wantSpark = Number(bodyData.spark_subscribed) === 1;
+          const subIdx = db.spark_subscriptions.findIndex(s => Number(s.user_id) === uid);
+          if (wantSpark && subIdx < 0) {
+            db.spark_subscriptions.push({
+              id: db.spark_subscriptions.length + 1,
+              user_id: uid,
+              code_id: 0,
+              activated_at: new Date().toISOString()
+            });
+          } else if (!wantSpark && subIdx >= 0) {
+            db.spark_subscriptions.splice(subIdx, 1);
+          }
+        }
+
+        await saveDB(db);
+
+        // If Admin updated their own account, update sessionStorage immediately too
+        if (Number(u.id) === Number(currUser.id)) {
+          const uOut = {
+            id: u.id,
+            first_name: u.first_name,
+            last_name: u.last_name,
+            name: `${u.first_name} ${u.last_name}`,
+            email: u.email,
+            phone: u.phone,
+            role: u.role,
+            avatar: u.avatar,
+            pwd_sig: u.password_plain,
+            spark_subscribed: true,
+            created_at: u.created_at
+          };
+          sessionStorage.setItem('auth', JSON.stringify(uOut));
+        }
+
+        return jsonResponse({ success: true, message: '✅ تم تحديث بيانات الحساب ومزامنتها على جميع الأجهزة!' });
       }
     }
 

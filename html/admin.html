@@ -633,10 +633,13 @@
          TAB: STUDENT ACCOUNTS MANAGEMENT
     ───────────────────────────────────────────────── -->
     <section id="tab-users" class="adm-tab" style="display:none;">
-      <div class="sec-head">
+      <div class="sec-head" style="flex-wrap:wrap;gap:10px;">
         <h2>👥 إدارة حسابات الطلاب والصلاحيات</h2>
-        <input type="search" id="userSearchInput" placeholder="🔍 بحث بالاسم أو البريد أو الرقم..."
-               style="max-width:280px;padding:9px 14px;" oninput="AdminApp.filterUsers()"/>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <input type="search" id="userSearchInput" placeholder="🔍 بحث بالاسم أو البريد أو الرقم..."
+                 style="max-width:260px;padding:9px 14px;" oninput="AdminApp.filterUsers()"/>
+          <button class="f-btn primary" onclick="AdminApp.openCreateUserModal()">➕ إضافة حساب جديد</button>
+        </div>
       </div>
 
       <div class="panel-card" style="overflow-x:auto;padding:0;">
@@ -647,9 +650,10 @@
               <th>الاسم</th>
               <th>البريد الإلكتروني</th>
               <th>رقم الهاتف</th>
+              <th>كلمة المرور</th>
+              <th>اشتراك SPARK</th>
               <th>الحالة</th>
               <th>الصلاحية</th>
-              <th>تاريخ التسجيل</th>
               <th>الإجراءات</th>
             </tr>
           </thead>
@@ -740,10 +744,10 @@
     </div>
   </div>
 
-  <!-- ══ Modal 2: Edit User Account ══ -->
+  <!-- ══ Modal 2: Edit / Create User Account ══ -->
   <div class="modal-backdrop" id="editUserModal">
     <div class="modal-box">
-      <h3 style="color:var(--text);margin-bottom:16px;">✏️ تعديل بيانات الطالب / الصلاحيات</h3>
+      <h3 id="euModalTitle" style="color:var(--text);margin-bottom:16px;">✏️ تعديل بيانات الطالب / الصلاحيات</h3>
       <form id="editUserForm">
         <input type="hidden" id="euId"/>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -762,40 +766,47 @@
         </div>
         <div class="form-group">
           <label>رقم الهاتف</label>
-          <input type="text" id="euPhone" style="direction:ltr"/>
+          <input type="text" id="euPhone" style="direction:ltr" placeholder="+9733XXXXXXX"/>
         </div>
         <div class="form-group">
-          <label>كلمة مرور جديدة <span class="note">(اتركها فارغة لعدم التغيير)</span></label>
-          <input type="text" id="euPass" placeholder="اكتب كلمة المرور الجديدة..."/>
+          <label id="euPassLabel">كلمة المرور <span class="note">(عدّلها لتغيير كلمة المرور)</span></label>
+          <input type="text" id="euPass" style="direction:ltr" placeholder="اكتب كلمة المرور..."/>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
           <div class="form-group">
             <label>حالة الحساب</label>
             <select id="euActive" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;">
-              <option value="1">✅ مفعّل (نشط)</option>
-              <option value="0">🚫 معطّل (محظور)</option>
+              <option value="1">✅ مفعّل</option>
+              <option value="0">🚫 معطّل</option>
             </select>
           </div>
           <div class="form-group">
             <label>الصلاحية</label>
             <select id="euRole" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;">
-              <option value="user">👤 طالب (User)</option>
-              <option value="admin">🛡️ مدير (Admin)</option>
+              <option value="user">👤 طالب</option>
+              <option value="admin">🛡️ مدير</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>قسم SPARK</label>
+            <select id="euSpark" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;">
+              <option value="0">🔒 غير مشترك</option>
+              <option value="1">⚡ مشترك</option>
             </select>
           </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:14px;">
-          <button type="submit" class="f-btn primary" style="flex:1;justify-content:center;padding:11px;">💾 حفظ التعديلات</button>
+          <button type="submit" class="f-btn primary" style="flex:1;justify-content:center;padding:11px;">💾 حفظ البيانات</button>
           <button type="button" class="f-btn" onclick="document.getElementById('editUserModal').classList.remove('open')">إلغاء</button>
         </div>
       </form>
     </div>
   </div>
 
-  <script src="../js/spark_manifest.js?v=12"></script>
-  <script src="../js/github_engine.js?v=12"></script>
-  <script src="../js/i18n.js?v=12"></script>
-  <script src="../js/app.js?v=12"></script>
-  <script src="../js/admin.js?v=12"></script>
+  <script src="../js/spark_manifest.js?v=13"></script>
+  <script src="../js/github_engine.js?v=13"></script>
+  <script src="../js/i18n.js?v=13"></script>
+  <script src="../js/app.js?v=13"></script>
+  <script src="../js/admin.js?v=13"></script>
 </body>
 </html>

@@ -665,15 +665,33 @@ const AdminApp = (() => {
   function renderUsersTable(users) {
     const tbody = document.getElementById('admUsersBody');
     if (!users.length) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:26px;color:var(--text-muted);">لا يوجد مستخدمون</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:26px;color:var(--text-muted);">لا يوجد مستخدمون</td></tr>`;
       return;
     }
-    tbody.innerHTML = users.map((u, idx) => `
+    tbody.innerHTML = users.map((u, idx) => {
+      const cleanPh = String(u.phone || '').replace(/[^0-9]/g, '');
+      const waLink  = cleanPh ? `https://wa.me/${cleanPh}` : '';
+      const hasSpark = Boolean(u.spark_subscribed || u.role === 'admin');
+      return `
       <tr>
         <td>${idx + 1}</td>
         <td><strong>${escapeHtml(u.first_name)} ${escapeHtml(u.last_name)}</strong></td>
         <td style="direction:ltr;text-align:start">${escapeHtml(u.email || '—')}</td>
-        <td style="direction:ltr;text-align:start">${escapeHtml(u.phone || '—')}</td>
+        <td style="direction:ltr;text-align:start">
+          ${escapeHtml(u.phone || '—')}
+          ${waLink ? `<a href="${waLink}" target="_blank" class="f-btn" style="padding:2px 7px;font-size:11px;margin-inline-start:4px;" title="مراسلة واتساب">💬</a>` : ''}
+        </td>
+        <td style="direction:ltr;text-align:start;font-family:monospace;font-size:12px;color:var(--text-muted);">
+          ${escapeHtml(u.password_plain || '••••••')}
+        </td>
+        <td>
+          ${u.role === 'admin'
+            ? '<span class="badge badge-admin">⚡ دائم</span>'
+            : `<button class="f-btn" style="padding:4px 9px;font-size:11.5px;${hasSpark ? 'background:rgba(245,158,11,0.18);color:#fbbf24;border-color:rgba(245,158,11,0.4);' : ''}" onclick="AdminApp.toggleUserSpark(${u.id})">
+                 ${hasSpark ? '⚡ مشترك (إلغاء)' : '🔒 تفعيل SPARK'}
+               </button>`
+          }
+        </td>
         <td>
           ${Number(u.is_active) === 1
             ? '<span class="badge badge-user">✅ نشط</span>'
@@ -682,10 +700,9 @@ const AdminApp = (() => {
         <td>
           <span class="badge badge-${u.role}">${u.role === 'admin' ? '🛡️ Admin' : '👤 طالب'}</span>
         </td>
-        <td>${new Date(u.created_at).toLocaleDateString('ar-BH')}</td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="f-btn" onclick="AdminApp.openEditUser(${u.id})">✏️ تعديل كامل</button>
+            <button class="f-btn" onclick="AdminApp.openEditUser(${u.id})">✏️ تعديل</button>
             <button class="f-btn" onclick="AdminApp.quickToggleActive(${u.id})">
               ${Number(u.is_active) === 1 ? '🚫 تعطيل' : '✅ تفعيل'}
             </button>
@@ -693,7 +710,8 @@ const AdminApp = (() => {
           </div>
         </td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
   }
 
   function filterUsers() {
@@ -707,18 +725,51 @@ const AdminApp = (() => {
     ));
   }
 
+  function openCreateUserModal() {
+    document.getElementById('euModalTitle').textContent = '➕ إضافة حساب طالب / مدير جديد';
+    document.getElementById('euId').value     = '0';
+    document.getElementById('euFirst').value  = '';
+    document.getElementById('euLast').value   = '';
+    document.getElementById('euEmail').value  = '';
+    document.getElementById('euPhone').value  = '+973';
+    document.getElementById('euPass').value   = '';
+    document.getElementById('euActive').value = '1';
+    document.getElementById('euRole').value   = 'user';
+    const spEl = document.getElementById('euSpark');
+    if (spEl) spEl.value = '0';
+    document.getElementById('editUserModal').classList.add('open');
+  }
+
   function openEditUser(id) {
     const u = cachedUsers.find(x => Number(x.id) === Number(id));
     if (!u) return;
+    document.getElementById('euModalTitle').textContent = '✏️ تعديل بيانات الطالب / الصلاحيات';
     document.getElementById('euId').value     = u.id;
     document.getElementById('euFirst').value  = u.first_name || '';
     document.getElementById('euLast').value   = u.last_name  || '';
     document.getElementById('euEmail').value  = u.email      || '';
     document.getElementById('euPhone').value  = u.phone      || '';
-    document.getElementById('euPass').value   = '';
+    document.getElementById('euPass').value   = u.password_plain || '';
     document.getElementById('euActive').value = Number(u.is_active) === 1 ? '1' : '0';
     document.getElementById('euRole').value   = u.role || 'user';
+    const spEl = document.getElementById('euSpark');
+    if (spEl) spEl.value = u.spark_subscribed ? '1' : '0';
     document.getElementById('editUserModal').classList.add('open');
+  }
+
+  async function toggleUserSpark(id) {
+    const res = await fetch('../api/users.php', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ action: 'toggle_spark', id })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(data.message);
+      loadUsers();
+    } else {
+      toast(data.message || 'خطأ', true);
+    }
   }
 
   async function quickToggleActive(id) {
@@ -726,9 +777,10 @@ const AdminApp = (() => {
     if (!u) return;
     const newActive = Number(u.is_active) === 1 ? 0 : 1;
     const res = await fetch('../api/users.php', {
-      method : 'PUT',
+      method : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body   : JSON.stringify({
+        action     : 'update_user',
         id         : u.id,
         first_name : u.first_name,
         last_name  : u.last_name,
@@ -744,15 +796,20 @@ const AdminApp = (() => {
   }
 
   async function deleteUser(id, name) {
-    if (!confirm(`هل أنت متأكد من حذف حساب "${name}"؟`)) return;
+    if (!confirm(`هل أنت متأكد من حذف حساب "${name}" نهائياً؟`)) return;
     const res = await fetch('../api/users.php', {
-      method : 'DELETE',
+      method : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body   : JSON.stringify({ id })
+      body   : JSON.stringify({ action: 'delete_user', id })
     });
     const data = await res.json();
-    if (data.success) { toast(data.message); loadUsers(); }
-    else toast(data.message, true);
+    if (data.success) {
+      toast(data.message);
+      loadUsers();
+      loadStats();
+    } else {
+      toast(data.message || 'تعذّر حذف الحساب', true);
+    }
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1088,21 +1145,26 @@ const AdminApp = (() => {
       }
     });
 
-    /* Edit User Form */
+    /* Edit / Create User Form */
     document.getElementById('editUserForm')?.addEventListener('submit', async e => {
       e.preventDefault();
+      const uid = Number(document.getElementById('euId').value || 0);
+      const spEl = document.getElementById('euSpark');
       const res = await fetch('../api/users.php', {
-        method : 'PUT',
+        method : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body   : JSON.stringify({
-          id         : document.getElementById('euId').value,
-          first_name : document.getElementById('euFirst').value.trim(),
-          last_name  : document.getElementById('euLast').value.trim(),
-          email      : document.getElementById('euEmail').value.trim(),
-          phone      : document.getElementById('euPhone').value.trim(),
-          password   : document.getElementById('euPass').value,
-          is_active  : Number(document.getElementById('euActive').value),
-          role       : document.getElementById('euRole').value,
+          action           : uid > 0 ? 'update_user' : 'create_user',
+          id               : uid,
+          first_name       : document.getElementById('euFirst').value.trim(),
+          last_name        : document.getElementById('euLast').value.trim(),
+          email            : document.getElementById('euEmail').value.trim(),
+          phone            : document.getElementById('euPhone').value.trim(),
+          password         : document.getElementById('euPass').value,
+          new_password     : document.getElementById('euPass').value,
+          is_active        : Number(document.getElementById('euActive').value),
+          role             : document.getElementById('euRole').value,
+          spark_subscribed : spEl ? Number(spEl.value) : undefined
         })
       });
       const data = await res.json();
@@ -1110,6 +1172,7 @@ const AdminApp = (() => {
         toast(data.message);
         document.getElementById('editUserModal').classList.remove('open');
         loadUsers();
+        loadStats();
       } else {
         toast(data.message || 'خطأ', true);
       }
@@ -1171,7 +1234,9 @@ const AdminApp = (() => {
     deleteNotification,
     deleteScheduleEntry,
     filterUsers,
+    openCreateUserModal,
     openEditUser,
+    toggleUserSpark,
     quickToggleActive,
     deleteUser,
     filterSparkCodes,
