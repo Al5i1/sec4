@@ -566,7 +566,7 @@ const Platform = (() => {
         <div>
           <div class="file-meta">
             <span>📅 ${dt}</span>
-            <span>${isLink ? 'رابط خارجي' : formatSize(f.file_size)}</span>
+            <span>${isLink ? 'رابط خارجي' : (Number(f.file_size) > 0 ? formatSize(f.file_size) : (ext ? ext.toUpperCase() + ' • بلاكبورد' : 'ملف'))}</span>
           </div>
           <div class="file-actions" style="margin-top:10px;">
             ${isLink ? `
@@ -574,15 +574,15 @@ const Platform = (() => {
                 🔗 فتح الرابط
               </a>
             ` : `
-              ${isPrev ? `
+              ${(isPrev && (f.data_url || f.file_path || f.vault_file)) ? `
                 <button class="f-btn" onclick="Platform.openPreview('${escapeHtml(streamUrl)}', '${escapeHtml(f.title)}', '${escapeHtml(f.extension)}', ${inSpark || f.section === 'spark'})">
                   👁️ معاينة
                 </button>
               ` : ''}
               <a class="f-btn primary" href="${escapeHtml(dlUrl)}"
-                 download="${escapeHtml(f.original_name || f.title)}"
+                 ${(f.data_url || f.file_path || f.vault_file) ? `download="${escapeHtml(f.original_name || f.title)}"` : 'target="_blank" rel="noopener"'}
                  onclick="Platform.trackDownload(${f.id})">
-                ⬇️ تحميل
+                ⬇️ تحميل الملف
               </a>
             `}
             ${adm ? `

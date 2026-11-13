@@ -605,6 +605,9 @@
       } else if (copy.file_path) {
         copy.stream_url   = '../' + copy.file_path;
         copy.download_url = '../' + copy.file_path;
+      } else if (copy.external_url) {
+        copy.stream_url   = copy.external_url;
+        copy.download_url = copy.external_url;
       }
       return copy;
     }
@@ -745,14 +748,14 @@
           ((subj && f.subject === subj) || (!subj && !f.subject)) &&
           ((flId === null && !f.parent_id) || Number(f.parent_id) === flId)
         );
-        folders.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
+        folders.sort((a, b) => (Number(a.sort_order || 999) - Number(b.sort_order || 999)) || String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
 
         const rawFiles = db.files.filter(f =>
           f.section === sec &&
           ((subj && f.subject === subj) || (!subj && !f.subject)) &&
           ((flId === null && !f.folder_id) || Number(f.folder_id) === flId)
         );
-        rawFiles.sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { numeric: true }));
+        rawFiles.sort((a, b) => (Number(a.sort_order || 999) - Number(b.sort_order || 999)) || String(a.title).localeCompare(String(b.title), undefined, { numeric: true }));
 
         const files = await Promise.all(rawFiles.map(enrichFile));
 
