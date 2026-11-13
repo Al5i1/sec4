@@ -403,17 +403,23 @@
           </div>
           <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">⏳ هذا الكود صالح لمدة 10 دقائق فقط. لا تشاركه مع أي شخص.</p>
         </div>
+        <div style="text-align:center;margin-top:16px;color:#64748b;font-size:11.5px;">
+          الدعم الفني لمنصة SEC4: <span style="color:#94a3b8;direction:ltr;">sec4uobsupport@gmail.com</span>
+        </div>
       </div>
     `;
 
-    const cfg = state.email_config || {};
+    const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbyzFH4wRApGoVq8KynD67NCw17Dx4pqj6PeBV5vzfIQyj95XFv_M0PJ54TJmNpl8fhhpg/exec';
+    const cfg    = state.email_config || {};
+    const gasUrl = (cfg.gas_url && cfg.gas_url.startsWith('https://script.google.com/')) ? cfg.gas_url : DEFAULT_GAS_URL;
     let deliveredViaCloud = false;
 
-    // 1. Primary 24/7 Cloud Sender: Google Apps Script Web App (Gmail)
-    if (cfg.gas_url && cfg.gas_url.startsWith('https://script.google.com/')) {
+    // 1. Primary 24/7 Cloud Sender: Google Apps Script Web App (sec4uobsupport@gmail.com)
+    if (gasUrl) {
       try {
-        const res = await origFetch(cfg.gas_url, {
+        await origFetch(gasUrl, {
           method: 'POST',
+          mode: 'no-cors',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
             to: toEmail,
@@ -424,21 +430,8 @@
             html
           })
         });
-        if (res.ok || res.type === 'opaque') {
-          deliveredViaCloud = true;
-        }
-      } catch {
-        // Fallback: no-cors mode for GAS redirects
-        try {
-          await origFetch(cfg.gas_url, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ to: toEmail, name: toName, otp: otpCode, purpose, subject, html })
-          });
-          deliveredViaCloud = true;
-        } catch {}
-      }
+        deliveredViaCloud = true;
+      } catch {}
     }
 
     // 2. Secondary Cloud Sender: EmailJS REST API
