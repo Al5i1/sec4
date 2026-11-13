@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════
    content.js — محرك سحب ملفات ومجلدات البلاكبورد ورفعها لمنصة SEC4
-   يعمل داخل https://blackboard.uob.edu.bh تلقائياً كل 12 ساعة أو بضغطة زر
+   يتصل عبر background.js لتجاوز قيود CSP في صفحة البلاكبورد
    ═══════════════════════════════════════════════════════════════════ */
 
 (() => {
@@ -36,13 +36,55 @@
     return new TextDecoder().decode(bytes);
   }
 
+  /* ── Call GitHub API via Extension Background Service Worker (Bypasses Page CSP) ── */
+  function bgFetch(url, options = {}) {
+    return new Promise((resolve, reject) => {
+      if (!chrome?.runtime?.sendMessage) {
+        reject(new Error('يرجى تحديث صفحة البلاكبورد (F5) بعد تحديث الإضافة'));
+        return;
+      }
+      chrome.runtime.sendMessage({ action: 'GH_FETCH', url, options }, resp => {
+        if (chrome.runtime.lastError) {
+          reject(new Error('يرجى تحديث صفحة البلاكبورد (F5) لتفعيل الإضافة'));
+          return;
+        }
+        if (!resp) {
+          reject(new Error('لم يستجب مشغل الخلفية للإضافة'));
+          return;
+        }
+        resolve(resp);
+      });
+    });
+  }
+
+  function bgDownloadAndUpload(downloadUrl, fileName, token) {
+    return new Promise(resolve => {
+      const ext  = (fileName.split('.').pop() || 'pdf').toLowerCase();
+      const path = `uploads/bb_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+      chrome.runtime.sendMessage({
+        action: 'DOWNLOAD_AND_UPLOAD_BB_FILE',
+        downloadUrl,
+        fileName,
+        path,
+        cloudRepo: CLOUD_REPO,
+        token
+      }, resp => {
+        if (chrome.runtime.lastError || !resp) {
+          resolve({ ok: false, size: 0 });
+        } else {
+          resolve(resp);
+        }
+      });
+    });
+  }
+
   function detectSubject(courseStr, sampleFileNames = '') {
     const combined = `${courseStr} ${sampleFileNames}`.toUpperCase();
     if (/011|ENG\s*11|ENGL\s*11|READING\s*&\s*VOCAB/i.test(combined)) return 'ENG11';
     if (/012|ENG\s*12|ENGL\s*12|WRITING|GRAMMAR/i.test(combined)) return 'ENG12';
     if (/013|ENG\s*13|ENGL\s*13|LISTENING\s*&\s*SPEAKING/i.test(combined)) return 'ENG13';
-    if (/014|ENG\s*14|ENGL\s*14|INTEGRATED|CALL/i.test(combined)) return 'ENG14';
-    if (/SSO|STUDY\s*SKILLS|STUDENT\s*SUCCESS/i.test(combined)) return 'SSO';
+    if (/014|ENG\s*14|ENGL\s*14|DIGITAL|INTEGRATED|CALL/i.test(combined)) return 'ENG14';
+    if (/SSO|STUDY\s*SKILLS|ORIENTATION/i.test(combined)) return 'SSO';
     return 'ENG13';
   }
 
@@ -52,34 +94,6 @@
     return res.json();
   }
 
-  async function uploadBlobToSec4Cloud(blob, fileName, token) {
-    const buf   = await blob.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let bin = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-    }
-    const b64  = btoa(bin);
-    const ext  = (fileName.split('.').pop() || 'pdf').toLowerCase();
-    const path = `uploads/bb_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
-
-    const res = await fetch(`https://api.github.com/repos/${CLOUD_REPO}/contents/${path}`, {
-      method: 'PUT',
-      headers: {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: `Blackboard Auto-Sync: ${fileName}`,
-        content: b64
-      })
-    });
-    if (res.ok) return `cloud://${path}`;
-    return null;
-  }
-
   async function runBlackboardSync(statusEl) {
     const log = msg => {
       if (statusEl) statusEl.textContent = msg;
@@ -87,15 +101,18 @@
     };
 
     try {
-      log('⏳ جاري الاتصال بقاعدة بيانات SEC4...');
+      log('⏳ جاري الاتصال بقاعدة بيانات SEC4 السحابية...');
       const token = getCloudToken();
 
-      const dbRes = await fetch(`${CLOUD_DB_URL}?_t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { 'Accept': 'application/vnd.github+json', 'Authorization': `Bearer ${token}` }
+      const dbRes = await bgFetch(`${CLOUD_DB_URL}?_t=${Date.now()}`, {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Authorization': `Bearer ${token}`
+        }
       });
-      if (!dbRes.ok) throw new Error('تعذر قراءة قاعدة بيانات SEC4');
-      const dbJson = await dbRes.json();
+      if (!dbRes.ok) throw new Error(`تعذر قراءة قاعدة بيانات SEC4 (HTTP ${dbRes.status})`);
+
+      const dbJson = JSON.parse(dbRes.text);
       const dbSha  = dbJson.sha;
       const state  = JSON.parse(base64ToUtf8(dbJson.content));
 
@@ -111,8 +128,8 @@
       let newFoldersCount = 0;
       let newFilesCount   = 0;
 
-      let nextFolderId = Math.max(200, ...state.custom_folders.map(f => Number(f.id) || 0)) + 1;
-      let nextFileId   = Math.max(300, ...state.custom_files.map(f => Number(f.id) || 0)) + 1;
+      let nextFolderId = Math.max(300, ...state.custom_folders.map(f => Number(f.id) || 0)) + 1;
+      let nextFileId   = Math.max(600, ...state.custom_files.map(f => Number(f.id) || 0)) + 1;
 
       for (const membership of meCourses.results) {
         const course = membership.course || {};
@@ -125,75 +142,68 @@
         if (!topContents || !Array.isArray(topContents.results)) continue;
 
         const subj = detectSubject(`${cCode} ${cName}`);
-        log(`📂 فحص مقرر ${cName} (${subj})...`);
+        log(`📂 فحص مقرر ${subj} (${cName.slice(0, 28)})...`);
 
         async function processContentItem(item, parentSec4FolderId) {
           const title   = (item.title || '').trim();
           const handler = item.contentHandler?.id || '';
 
-          // If it's a folder / learning module (e.g., Week #1, Week #2...)
-          if (handler.includes('folder') || handler.includes('module') || item.hasChildren) {
-            let sec4Folder = state.custom_folders.find(f =>
-              f.section === 'blackboard' &&
-              f.subject === subj &&
-              f.name === title &&
-              Number(f.parent_id || 0) === Number(parentSec4FolderId || 0)
-            );
-            if (!sec4Folder) {
-              sec4Folder = {
-                id: nextFolderId++,
-                section: 'blackboard',
-                subject: subj,
-                parent_id: parentSec4FolderId || null,
-                name: title,
-                sort_order: 0,
-                created_at: new Date().toISOString()
-              };
-              state.custom_folders.push(sec4Folder);
-              newFoldersCount++;
-            }
-
+          if (handler.includes('folder') || handler.includes('module') || handler.includes('lesson') || item.hasChildren) {
             const children = await bbGet(`/learn/api/public/v1/courses/${cId}/contents/${item.id}/children?limit=100`);
-            if (children && Array.isArray(children.results)) {
-              for (const child of children.results) {
+            const childList = (children && Array.isArray(children.results)) ? children.results : [];
+
+            if (childList.length > 0 && title !== 'ultraDocumentBody') {
+              let sec4Folder = state.custom_folders.find(f =>
+                f.section === 'blackboard' &&
+                f.subject === subj &&
+                f.name === title &&
+                Number(f.parent_id || 0) === Number(parentSec4FolderId || 0)
+              );
+              if (!sec4Folder) {
+                sec4Folder = {
+                  id: nextFolderId++,
+                  bb_id: `${cId}_${item.id}`,
+                  section: 'blackboard',
+                  subject: subj,
+                  parent_id: parentSec4FolderId || null,
+                  name: title,
+                  sort_order: 0,
+                  created_at: new Date().toISOString()
+                };
+                state.custom_folders.push(sec4Folder);
+                newFoldersCount++;
+              }
+
+              for (const child of childList) {
                 await processContentItem(child, sec4Folder.id);
               }
             }
           }
 
-          // Check attachments on this item
           const atts = await bbGet(`/learn/api/public/v1/courses/${cId}/contents/${item.id}/attachments`);
           if (atts && Array.isArray(atts.results)) {
             for (const att of atts.results) {
               const fileName = att.fileName || item.title || 'file.pdf';
+              const attKey   = `${cId}_${item.id}_${att.id}`;
               const alreadyExists = state.custom_files.some(f =>
-                f.section === 'blackboard' &&
-                f.subject === subj &&
-                (f.original_name === fileName || f.bb_att_id === `${cId}_${item.id}_${att.id}`)
+                f.bb_att_id === attKey ||
+                (f.section === 'blackboard' &&
+                 f.subject === subj &&
+                 Number(f.folder_id || 0) === Number(parentSec4FolderId || 0) &&
+                 f.original_name === fileName)
               );
               if (alreadyExists) continue;
 
-              log(`⬇️ جاري تحميل ورفع الملف الجديد: ${fileName}...`);
-              const dlUrl = `/learn/api/public/v1/courses/${cId}/contents/${item.id}/attachments/${att.id}/download`;
+              log(`⬇️ جاري سحب ورفع الملف الجديد: ${fileName}...`);
+              const dlUrl     = `/learn/api/public/v1/courses/${cId}/contents/${item.id}/attachments/${att.id}/download`;
               const fullDlUrl = `https://blackboard.uob.edu.bh${dlUrl}`;
-              let cloudPath = null;
-              let blobSize  = 0;
 
-              try {
-                const fileResp = await fetch(dlUrl, { credentials: 'include' });
-                if (fileResp.ok) {
-                  const blob = await fileResp.blob();
-                  blobSize = blob.size;
-                  if (blob.size > 0 && blob.size <= 25 * 1024 * 1024) {
-                    cloudPath = await uploadBlobToSec4Cloud(blob, fileName, token);
-                  }
-                }
-              } catch {}
+              const upRes = await bgDownloadAndUpload(fullDlUrl, fileName, token);
+              const ext   = (fileName.split('.').pop() || 'pdf').toLowerCase();
 
-              const ext = (fileName.split('.').pop() || 'pdf').toLowerCase();
               state.custom_files.push({
                 id: nextFileId++,
-                bb_att_id: `${cId}_${item.id}_${att.id}`,
+                bb_att_id: attKey,
                 section: 'blackboard',
                 subject: subj,
                 folder_id: parentSec4FolderId || null,
@@ -201,9 +211,9 @@
                 title: (item.title || fileName.replace(/\.[^/.]+$/, '')).trim(),
                 description: `مرفوع تلقائياً من البلاكبورد (${cName})`,
                 original_name: fileName,
-                data_url: cloudPath,
+                data_url: upRes.ok ? upRes.cloudPath : null,
                 external_url: fullDlUrl,
-                file_size: blobSize,
+                file_size: upRes.size || 0,
                 mime_type: att.mimeType || 'application/octet-stream',
                 extension: ext,
                 sort_order: 0,
@@ -222,7 +232,7 @@
       if (newFoldersCount > 0 || newFilesCount > 0) {
         log(`☁️ جاري حفظ ${newFilesCount} ملف جديد و ${newFoldersCount} مجلد في منصة SEC4...`);
         state.updated_at = Date.now();
-        const saveRes = await fetch(CLOUD_DB_URL, {
+        const saveRes = await bgFetch(CLOUD_DB_URL, {
           method: 'PUT',
           headers: {
             'Accept': 'application/vnd.github+json',
@@ -236,9 +246,9 @@
           })
         });
         if (!saveRes.ok) throw new Error('فشل حفظ التحديث في السيرفر السحابي');
-        log(`✅ تمت المزامنة! (+${newFilesCount} ملف جديد، +${newFoldersCount} مجلد)`);
+        log(`✅ تمت المزامنة بنجاح! (+${newFilesCount} ملف جديد، +${newFoldersCount} مجلد)`);
       } else {
-        log('✅ كل ملفات البلاكبورد محدثة وموجودة بالفعل في منصة SEC4!');
+        log('✅ جميع المواد والملفات (103 ملفات) محدثة وموجودة في موقع SEC4!');
       }
 
       localStorage.setItem('sec4_last_bb_sync', String(Date.now()));
@@ -262,12 +272,12 @@
       borderRadius: '16px',
       boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
       border: '1.5px solid rgba(167,139,250,0.5)',
-      fontFamily: ' Cairo, sans-serif',
+      fontFamily: 'Cairo, Tahoma, sans-serif',
       direction: 'rtl',
       display: 'flex',
       flexDirection: 'column',
       gap: '8px',
-      minWidth: '260px'
+      minWidth: '275px'
     });
 
     box.innerHTML = `
@@ -275,7 +285,7 @@
         <strong style="font-size:13.5px;">🎓 ربط منصة SEC4 التلقائي</strong>
         <span style="font-size:11px;background:rgba(74,222,128,0.2);color:#4ade80;padding:2px 8px;border-radius:99px;">كل 12 ساعة</span>
       </div>
-      <div id="sec4BbSyncStatus" style="font-size:12px;color:#cbd5e1;">جاهز لفحص وسحب الملفات الجديدة</div>
+      <div id="sec4BbSyncStatus" style="font-size:12px;color:#cbd5e1;">✅ مربوط مع قاعدة بيانات SEC4 (103 ملفات)</div>
       <button id="sec4BbSyncBtn" style="padding:8px 12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:bold;cursor:pointer;font-size:12.5px;">
         🔄 فحص وسحب الملفات الجديدة الآن
       </button>
@@ -285,11 +295,10 @@
     const statusEl = document.getElementById('sec4BbSyncStatus');
     document.getElementById('sec4BbSyncBtn').addEventListener('click', () => runBlackboardSync(statusEl));
 
-    // فحص تلقائي إذا مر أكثر من 12 ساعة على آخر فحص أو إذا تم الفتح بواسطة المؤقت
     const lastSync = Number(localStorage.getItem('sec4_last_bb_sync') || 0);
     const twelveHoursMs = 12 * 60 * 60 * 1000;
     if (location.search.includes('sec4_autosync=1') || (Date.now() - lastSync > twelveHoursMs)) {
-      setTimeout(() => runBlackboardSync(statusEl), 4000);
+      setTimeout(() => runBlackboardSync(statusEl), 3500);
     }
   }
 

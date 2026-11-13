@@ -7,3 +7,11 @@ spark_import.php
 build_github_vault.php
 .DS_Store
 Thumbs.db
+
+setup.php
+database.sql
+push_to_github.bat
+.env
+.env.*
+*.sql
+*.bak
