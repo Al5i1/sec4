@@ -383,6 +383,118 @@
     });
   }
 
+  /* ── Send 6-Digit OTP Verification Email (Cloud 24/7 via GAS / EmailJS / FormSubmit) ── */
+  async function sendOtpEmail(state, toEmail, toName, otpCode, purpose = 'register') {
+    const isReg   = purpose === 'register';
+    const titleAr = isReg ? 'تأكيد إنشاء حسابك في منصة SEC4' : 'استعادة كلمة المرور في منصة SEC4';
+    const subject = `🔐 كود التحقق الخاص بك في منصة SEC4: ${otpCode}`;
+    const html    = `
+      <div dir="rtl" style="font-family:'Cairo',Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;background:#0f172a;color:#f8fafc;border-radius:18px;padding:28px;border:1px solid #334155;">
+        <div style="text-align:center;margin-bottom:18px;">
+          <div style="font-size:36px;">🎓</div>
+          <h2 style="margin:8px 0 4px;color:#fff;font-size:20px;">منصة طلاب شعبة SEC4 الأكاديمية</h2>
+          <p style="margin:0;color:#94a3b8;font-size:13.5px;">${titleAr}</p>
+        </div>
+        <div style="background:#1e293b;border-radius:14px;padding:20px;text-align:center;border:1px solid rgba(99,102,241,0.35);">
+          <p style="margin:0 0 12px;color:#e2e8f0;font-size:14.5px;">مرحباً <strong>${toName || 'عزيزي الطالب'}</strong>،</p>
+          <p style="margin:0 0 16px;color:#cbd5e1;font-size:13.5px;">استخدم كود التحقق التالي لإتمام العملية في المنصة:</p>
+          <div style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;font-size:30px;font-weight:800;letter-spacing:10px;padding:14px 28px;border-radius:12px;direction:ltr;">
+            ${otpCode}
+          </div>
+          <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">⏳ هذا الكود صالح لمدة 10 دقائق فقط. لا تشاركه مع أي شخص.</p>
+        </div>
+      </div>
+    `;
+
+    const cfg = state.email_config || {};
+    let deliveredViaCloud = false;
+
+    // 1. Primary 24/7 Cloud Sender: Google Apps Script Web App (Gmail)
+    if (cfg.gas_url && cfg.gas_url.startsWith('https://script.google.com/')) {
+      try {
+        const res = await origFetch(cfg.gas_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            to: toEmail,
+            name: toName,
+            otp: otpCode,
+            purpose,
+            subject,
+            html
+          })
+        });
+        if (res.ok || res.type === 'opaque') {
+          deliveredViaCloud = true;
+        }
+      } catch {
+        // Fallback: no-cors mode for GAS redirects
+        try {
+          await origFetch(cfg.gas_url, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ to: toEmail, name: toName, otp: otpCode, purpose, subject, html })
+          });
+          deliveredViaCloud = true;
+        } catch {}
+      }
+    }
+
+    // 2. Secondary Cloud Sender: EmailJS REST API
+    if (!deliveredViaCloud && cfg.emailjs_service_id && cfg.emailjs_template_id && cfg.emailjs_public_key) {
+      try {
+        const res = await origFetch('https://api.emailjs.com/api/v1.0/email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service_id: cfg.emailjs_service_id,
+            template_id: cfg.emailjs_template_id,
+            user_id: cfg.emailjs_public_key,
+            template_params: {
+              to_email: toEmail,
+              to_name: toName,
+              otp_code: otpCode,
+              subject,
+              purpose_text: titleAr
+            }
+          })
+        });
+        if (res.ok) deliveredViaCloud = true;
+      } catch {}
+    }
+
+    // 3. Automatic FormSubmit AJAX Relay attempt
+    if (!deliveredViaCloud) {
+      try {
+        const fsRes = await origFetch(`https://formsubmit.co/ajax/${encodeURIComponent(toEmail)}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            _subject: subject,
+            _template: 'box',
+            _captcha: 'false',
+            العملية: titleAr,
+            الطالب: toName || toEmail,
+            كود_التحقق_OTP: otpCode,
+            ملاحظة: 'أدخل هذا الكود المكون من 6 أرقام في منصة SEC4 لإتمام العملية (صالح لمدة 10 دقائق).'
+          })
+        });
+        if (fsRes.ok) {
+          const fsJson = await fsRes.json().catch(() => ({}));
+          if (fsJson.success === 'true' || fsJson.success === true) {
+            deliveredViaCloud = true;
+          }
+        }
+      } catch {}
+    }
+
+    return { deliveredViaCloud };
+  }
+
   /* ── Handle API Requests via Live Cloud Database ── */
   async function handleVirtualApi(urlStr, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
@@ -445,23 +557,67 @@
       return jsonResponse({ success: true, message: 'تم تسجيل الدخول بنجاح!', redirect: 'home.html', user: uOut });
     }
 
-    /* 2. REGISTER */
+    /* 2. REGISTER (WITH EMAIL OTP VERIFICATION) */
     if (path.endsWith('/api/register.php')) {
+      const step  = bodyData.step || 'send_otp';
       const first = String(bodyData.first_name || '').trim();
       const last  = String(bodyData.last_name  || '').trim();
       const email = String(bodyData.email      || '').trim().toLowerCase();
       const phone = String(bodyData.phone      || '').trim();
       const pass  = String(bodyData.password   || '');
 
-      if (!first || !last || pass.length < 8) {
-        return jsonResponse({ success: false, message: 'يرجى تعبئة كافة الحقول المطلوبة.' }, 422);
+      if (!first || !last || !email || pass.length < 8) {
+        return jsonResponse({ success: false, message: 'يرجى تعبئة كافة الحقول المطلوبة بشكل صحيح.' }, 422);
       }
-      if (email && db.users.some(u => String(u.email || '').toLowerCase() === email)) {
-        return jsonResponse({ success: false, message: 'البريد الإلكتروني مسجّل بالفعل.' }, 409);
+      if (db.users.some(u => String(u.email || '').toLowerCase() === email)) {
+        return jsonResponse({ success: false, message: 'البريد الإلكتروني مسجّل بالفعل في المنصة.' }, 409);
       }
       if (phone && db.users.some(u => String(u.phone || '') === phone)) {
-        return jsonResponse({ success: false, message: 'رقم الهاتف مسجّل بالفعل.' }, 409);
+        return jsonResponse({ success: false, message: 'رقم الهاتف مسجّل بالفعل في المنصة.' }, 409);
       }
+
+      const st = db._state;
+      st.otp_codes = st.otp_codes || {};
+
+      // Step 1: Generate & Send 6-Digit OTP to Email
+      if (step === 'send_otp') {
+        const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+        st.otp_codes[email] = {
+          code: otpCode,
+          email,
+          name: `${first} ${last}`,
+          purpose: 'register',
+          created_at: new Date().toISOString(),
+          expires_at: Date.now() + 10 * 60 * 1000
+        };
+        await saveDB(db);
+        await sendOtpEmail(st, email, `${first} ${last}`, otpCode, 'register');
+
+        return jsonResponse({
+          success: true,
+          otp_sent: true,
+          message: `📨 تم إرسال كود التحقق (6 أرقام) إلى بريدك الإلكتروني: ${email}`
+        });
+      }
+
+      // Step 2: Verify OTP & Create Account
+      const inputOtp = String(bodyData.otp_code || '').trim();
+      const otpRec   = st.otp_codes[email];
+
+      if (!otpRec || otpRec.purpose !== 'register') {
+        return jsonResponse({ success: false, message: 'يرجى طلب كود التحقق أولاً.' }, 422);
+      }
+      if (Date.now() > Number(otpRec.expires_at || 0)) {
+        delete st.otp_codes[email];
+        await saveDB(db);
+        return jsonResponse({ success: false, message: '⏳ انتهت صلاحية كود التحقق (10 دقائق). اضغط على إعادة إرسال الكود.' }, 422);
+      }
+      if (String(otpRec.code) !== inputOtp) {
+        return jsonResponse({ success: false, message: '❌ كود التحقق الذي أدخلته غير صحيح! تأكد من الرمز المرسل لبريدك الإلكتروني.' }, 422);
+      }
+
+      // OTP Verified -> Delete OTP & Create User
+      delete st.otp_codes[email];
 
       let avatarUrl = null;
       if (options.body instanceof FormData) {
@@ -501,45 +657,78 @@
         created_at: newUser.created_at
       };
       sessionStorage.setItem('auth', JSON.stringify(uOut));
-      return jsonResponse({ success: true, message: 'تم إنشاء الحساب بنجاح!', redirect: 'home.html', user: uOut }, 201);
+      return jsonResponse({
+        success: true,
+        message: '🎉 تم تأكيد البريد الإلكتروني وإنشاء الحساب بنجاح!',
+        redirect: 'home.html',
+        user: uOut
+      }, 201);
     }
 
-    /* 3. FORGOT PASSWORD */
+    /* 3. FORGOT PASSWORD (WITH EMAIL OTP VERIFICATION) */
     if (path.endsWith('/api/forgot_password.php')) {
-      const act   = bodyData.step || bodyData.action || '';
+      const act   = bodyData.step || bodyData.action || 'send_otp';
       const email = String(bodyData.email || '').trim().toLowerCase();
-      const rawPh = String(bodyData.phone || '').replace(/[\s\-()]/g, '');
+      const st    = db._state;
+      st.otp_codes = st.otp_codes || {};
 
-      if (act === 'verify') {
-        const found = db.users.find(u => {
-          const uMail = String(u.email || '').toLowerCase();
-          const uPh   = String(u.phone || '').replace(/[\s\-()]/g, '');
-          return uMail === email && (uPh === rawPh || uPh === '+973' + rawPh || uPh.replace(/^\+973/, '') === rawPh);
-        });
+      if (act === 'send_otp' || act === 'verify') {
+        const found = db.users.find(u => String(u.email || '').toLowerCase() === email);
         if (!found) {
-          return jsonResponse({ success: false, message: 'لم يتم العثور على حساب يطابق البريد الإلكتروني ورقم الهاتف المدخلين.' }, 404);
+          return jsonResponse({ success: false, message: '❌ لم يتم العثور على أي حساب مسجل بهذا البريد الإلكتروني.' }, 404);
         }
-        sessionStorage.setItem('fp_verified_uid', String(found.id));
+
+        const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+        const fullName = `${found.first_name} ${found.last_name}`;
+        st.otp_codes[email] = {
+          code: otpCode,
+          email,
+          user_id: found.id,
+          name: fullName,
+          purpose: 'reset',
+          created_at: new Date().toISOString(),
+          expires_at: Date.now() + 10 * 60 * 1000
+        };
+        await saveDB(db);
+        await sendOtpEmail(st, email, fullName, otpCode, 'reset');
+
         return jsonResponse({
           success: true,
-          user_name: `${found.first_name} ${found.last_name}`,
-          message: `تم التحقق من الحساب (${found.first_name} ${found.last_name}). يمكنك الآن تعيين كلمة المرور الجديدة.`
+          user_name: fullName,
+          message: `📨 تم إرسال كود التحقق (6 أرقام) إلى بريدك الإلكتروني: ${email}`
         });
       }
+
       if (act === 'reset') {
-        const fpUid = Number(sessionStorage.getItem('fp_verified_uid') || 0);
-        const found = db.users.find(u => Number(u.id) === fpUid);
-        if (!found) {
-          return jsonResponse({ success: false, message: 'انتهت جلسة التحقق، يرجى إعادة المحاولة.' }, 403);
+        const inputOtp = String(bodyData.otp_code || '').trim();
+        const otpRec   = st.otp_codes[email];
+
+        if (!otpRec || otpRec.purpose !== 'reset') {
+          return jsonResponse({ success: false, message: 'انتهت جلسة التحقق، يرجى طلب كود جديد.' }, 403);
         }
+        if (Date.now() > Number(otpRec.expires_at || 0)) {
+          delete st.otp_codes[email];
+          await saveDB(db);
+          return jsonResponse({ success: false, message: '⏳ انتهت صلاحية كود التحقق (10 دقائق). اضغط على إعادة إرسال الكود.' }, 422);
+        }
+        if (String(otpRec.code) !== inputOtp) {
+          return jsonResponse({ success: false, message: '❌ كود التحقق غير صحيح! يرجى إدخال الكود المكون من 6 أرقام المرسل لبريدك.' }, 422);
+        }
+
+        const found = db.users.find(u => Number(u.id) === Number(otpRec.user_id) || String(u.email || '').toLowerCase() === email);
+        if (!found) {
+          return jsonResponse({ success: false, message: 'الحساب غير موجود.' }, 404);
+        }
+
         const newP = String(bodyData.new_password || '');
         const cnfP = String(bodyData.confirm_password || newP);
         if (newP.length < 8) return jsonResponse({ success: false, message: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.' }, 422);
         if (newP !== cnfP) return jsonResponse({ success: false, message: 'كلمتا المرور غير متطابقتين.' }, 422);
+
         found.password_plain = newP;
-        sessionStorage.removeItem('fp_verified_uid');
+        delete st.otp_codes[email];
         await saveDB(db);
-        return jsonResponse({ success: true, message: '✅ تم تغيير كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول.' });
+        return jsonResponse({ success: true, message: '✅ تم تأكيد الكود وتغيير كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول.' });
       }
     }
 
@@ -1277,6 +1466,48 @@
     /* 12. BACKUP */
     if (path.endsWith('/api/backup.php')) {
       return jsonResponse({ success: true, backups: [], message: 'البيانات محفوظة تلقائياً في السيرفر السحابي المشترك (Al5i1/sec4-db).' });
+    }
+
+    /* 13. EMAIL OTP CONFIG & LOGS (Admin Only) */
+    if (path.endsWith('/api/email_config.php')) {
+      if (!currUser || currUser.role !== 'admin') {
+        return jsonResponse({ success: false, message: 'صلاحية مرفوضة' }, 403);
+      }
+      const st = db._state;
+      st.email_config = st.email_config || {};
+      st.otp_codes    = st.otp_codes    || {};
+
+      if (method === 'GET') {
+        const now = Date.now();
+        const activeOtps = Object.values(st.otp_codes)
+          .filter(x => x && Number(x.expires_at || 0) > now)
+          .sort((a, b) => Number(b.expires_at) - Number(a.expires_at));
+        return jsonResponse({
+          success: true,
+          config: st.email_config,
+          active_otps: activeOtps
+        });
+      }
+
+      if (method === 'POST') {
+        if (bodyData.action === 'save_config') {
+          st.email_config.gas_url             = String(bodyData.gas_url || '').trim();
+          st.email_config.emailjs_service_id  = String(bodyData.emailjs_service_id || '').trim();
+          st.email_config.emailjs_template_id = String(bodyData.emailjs_template_id || '').trim();
+          st.email_config.emailjs_public_key  = String(bodyData.emailjs_public_key || '').trim();
+          await saveDB(db);
+          return jsonResponse({ success: true, message: '✅ تم حفظ إعدادات إرسال كود التحقق عبر الإيميل بنجاح!' });
+        }
+        if (bodyData.action === 'test_send') {
+          const testEmail = String(bodyData.test_email || currUser.email || '').trim();
+          const testCode  = String(Math.floor(100000 + Math.random() * 900000));
+          await sendOtpEmail(st, testEmail, `${currUser.first_name} ${currUser.last_name}`, testCode, 'register');
+          return jsonResponse({
+            success: true,
+            message: `📨 تم إرسال رسالة تجريبية بالكود (${testCode}) إلى: ${testEmail}`
+          });
+        }
+      }
     }
 
     return jsonResponse({ success: true });

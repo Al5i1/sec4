@@ -659,7 +659,83 @@ const AdminApp = (() => {
       if (!data.success) return;
       cachedUsers = data.users || [];
       renderUsersTable(cachedUsers);
+      loadEmailOtpConfig();
     } catch {}
+  }
+
+  async function loadEmailOtpConfig() {
+    try {
+      const res  = await fetch('../api/email_config.php');
+      const data = await res.json();
+      if (!data.success) return;
+
+      const gasInp = document.getElementById('cfgGasUrl');
+      if (gasInp && data.config) {
+        gasInp.value = data.config.gas_url || '';
+      }
+
+      const listEl = document.getElementById('activeOtpsList');
+      if (!listEl) return;
+
+      const otps = data.active_otps || [];
+      if (!otps.length) {
+        listEl.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text-faint);">لا توجد أكواد تحقق نشطة في هذه اللحظة.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = otps.map(o => {
+        const remMin = Math.max(1, Math.ceil((Number(o.expires_at) - Date.now()) / 60000));
+        const pBadge = o.purpose === 'register'
+          ? '<span class="badge badge-user">إنشاء حساب</span>'
+          : '<span class="badge badge-admin">استعادة كلمة المرور</span>';
+        return `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--input-border);margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:700;color:var(--text);">${escapeHtml(o.name || o.email)} ${pBadge}</div>
+              <div style="font-size:12px;color:var(--text-muted);direction:ltr;text-align:right;">${escapeHtml(o.email)} • متبقي ${remMin} د</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <strong style="font-size:18px;letter-spacing:4px;color:#fbbf24;font-family:monospace;">${escapeHtml(o.code)}</strong>
+              <button type="button" class="f-btn" style="padding:4px 8px;" onclick="AdminApp.copyCode('${escapeHtml(o.code)}')">📋 نسخ</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch {}
+  }
+
+  function copyGasScript() {
+    const code = [
+      'function doPost(e) {',
+      '  var data = JSON.parse(e.postData.contents);',
+      '  MailApp.sendEmail({',
+      '    to: data.to,',
+      '    subject: data.subject,',
+      '    htmlBody: data.html,',
+      '    name: "منصة SEC4 الأكاديمية"',
+      '  });',
+      '  return ContentService.createTextOutput(JSON.stringify({ ok: true }))',
+      '    .setMimeType(ContentService.MimeType.JSON);',
+      '}'
+    ].join('\n');
+    navigator.clipboard.writeText(code).then(() => {
+      toast('📋 تم نسخ كود Google Apps Script! الصقه في script.google.com ثم اضغط Deploy -> Web app');
+    });
+  }
+
+  async function testSendOtpEmail() {
+    try {
+      const res  = await fetch('../api/email_config.php', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ action: 'test_send' })
+      });
+      const data = await res.json();
+      if (data.success) toast(data.message);
+      else toast(data.message || 'خطأ', true);
+    } catch {
+      toast('تعذّر إرسال البريد التجريبي', true);
+    }
   }
 
   function renderUsersTable(users) {
@@ -1192,6 +1268,24 @@ const AdminApp = (() => {
         loadStats();
       } else toast(data.message || 'خطأ', true);
     });
+
+    /* Email OTP Config Form */
+    document.getElementById('emailOtpConfigForm')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const gasUrl = document.getElementById('cfgGasUrl')?.value.trim() || '';
+      const res = await fetch('../api/email_config.php', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ action: 'save_config', gas_url: gasUrl })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast(data.message);
+        loadEmailOtpConfig();
+      } else {
+        toast(data.message || 'خطأ', true);
+      }
+    });
   }
 
   async function logout() {
@@ -1239,6 +1333,9 @@ const AdminApp = (() => {
     toggleUserSpark,
     quickToggleActive,
     deleteUser,
+    loadEmailOtpConfig,
+    copyGasScript,
+    testSendOtpEmail,
     filterSparkCodes,
     copyCode,
     copyGeneratedCodes,

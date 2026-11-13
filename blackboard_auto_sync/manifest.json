@@ -5,7 +5,8 @@
   "description": "يفحص بلاكبورد جامعة البحرين كل 12 ساعة ويرفع أي ملفات أو أسابيع جديدة تلقائياً إلى منصة SEC4",
   "permissions": [
     "alarms",
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://blackboard.uob.edu.bh/*",

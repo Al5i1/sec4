@@ -642,7 +642,7 @@
         </div>
       </div>
 
-      <div class="panel-card" style="overflow-x:auto;padding:0;">
+      <div class="panel-card" style="overflow-x:auto;padding:0;margin-bottom:22px;">
         <table class="admin-table">
           <thead>
             <tr>
@@ -659,6 +659,44 @@
           </thead>
           <tbody id="admUsersBody"></tbody>
         </table>
+      </div>
+
+      <!-- Email OTP Configuration & Live OTP Logs -->
+      <div class="admin-grid-2">
+        <div class="panel-card">
+          <h3>📧 إعداد الإرسال التلقائي لكود الإيميل (OTP 24/7 عبر Gmail)</h3>
+          <p style="color:var(--text-muted);font-size:12.5px;line-height:1.7;margin-bottom:12px;">
+            لإرسال كود التحقق (6 أرقام) تلقائياً من بريدك في Gmail إلى أي طالب على مدار 24 ساعة مجاناً (حتى لو اللابتوب مغلق):
+            <br/>1️⃣ اضغط <strong>«📋 نسخ كود السكربت الجاهز»</strong> وافتح <a href="https://script.google.com/home/start" target="_blank" style="color:#60a5fa;">script.google.com</a> واضغط <strong>New Project</strong>.
+            <br/>2️⃣ الصق الكود واضغط <strong>Deploy ⬅️ New deployment ⬅️ Web app</strong> واختر <code>Who has access: Anyone</code>.
+            <br/>3️⃣ الصق رابط الـ Web App هنا واضغط حفظ!
+          </p>
+          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+            <button type="button" class="f-btn" onclick="AdminApp.copyGasScript()">📋 نسخ كود السكربت الجاهز</button>
+            <a href="https://script.google.com/home/start" target="_blank" rel="noopener" class="f-btn">🔗 فتح Google Apps Script</a>
+          </div>
+          <form id="emailOtpConfigForm">
+            <div class="form-group">
+              <label>رابط Google Apps Script Web App URL</label>
+              <input type="url" id="cfgGasUrl" placeholder="https://script.google.com/macros/s/AKfycb.../exec" style="direction:ltr;text-align:left"/>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="submit" class="f-btn primary" style="flex:1;justify-content:center;padding:10px;">💾 حفظ وتفعيل الإرسال 24/7</button>
+              <button type="button" class="f-btn" onclick="AdminApp.testSendOtpEmail()">📨 إرسال كود تجريبي لإيميلي</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="margin:0;">🔢 أكواد التحقق النشطة حالياً (OTP Log)</h3>
+            <button type="button" class="f-btn" onclick="AdminApp.loadEmailOtpConfig()">🔄 تحديث</button>
+          </div>
+          <p style="color:var(--text-muted);font-size:12px;margin-bottom:10px;">
+            تظهر هنا أي أكواد تحقق (صالحة لمدة 10 دقائق) طلبها الطلاب عند التسجيل أو استعادة كلمة المرور:
+          </p>
+          <div id="activeOtpsList" style="font-size:13px;color:var(--text-muted);">جاري التحميل...</div>
+        </div>
       </div>
     </section>
 
@@ -803,10 +841,10 @@
     </div>
   </div>
 
-  <script src="../js/spark_manifest.js?v=14"></script>
-  <script src="../js/github_engine.js?v=14"></script>
-  <script src="../js/i18n.js?v=14"></script>
-  <script src="../js/app.js?v=14"></script>
-  <script src="../js/admin.js?v=14"></script>
+  <script src="../js/spark_manifest.js?v=15"></script>
+  <script src="../js/github_engine.js?v=15"></script>
+  <script src="../js/i18n.js?v=15"></script>
+  <script src="../js/app.js?v=15"></script>
+  <script src="../js/admin.js?v=15"></script>
 </body>
 </html>

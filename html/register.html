@@ -179,11 +179,48 @@
     </form>
   </div><!-- /card -->
 
-  <script src="../js/spark_manifest.js?v=13"></script>
-  <script src="../js/github_engine.js?v=13"></script>
-  <script src="../js/i18n.js?v=13"></script>
-  <script src="../js/app.js?v=13"></script>
-  <script src="../js/auth.js?v=13"></script>
-  <script src="../js/ai_assistant.js?v=13"></script>
+  <!-- ══ Register Email OTP Verification Modal ══ -->
+  <div id="registerOtpModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.76);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:16px;z-index:600;">
+    <div class="card" style="max-width:420px;padding:30px 26px;position:relative;text-align:center;">
+      <button type="button" id="closeRegOtpBtn" style="position:absolute;top:16px;inset-inline-end:18px;background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;">✕</button>
+      <div style="font-size:42px;margin-bottom:8px;">📩</div>
+      <h2 style="color:var(--text);font-size:20px;font-weight:700;margin-bottom:6px;">تأكيد البريد الإلكتروني</h2>
+      <p style="color:var(--text-muted);font-size:13.5px;line-height:1.7;margin-bottom:14px;">
+        تم إرسال كود تحقق مكون من <strong>6 أرقام</strong> إلى بريدك الإلكتروني:<br/>
+        <strong id="regOtpEmailDisplay" style="color:#60a5fa;direction:ltr;display:inline-block;margin-top:4px;"></strong>
+      </p>
+
+      <div id="regOtpFallbackHint" style="display:none;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:#fbbf24;padding:10px 12px;border-radius:10px;font-size:12.5px;margin-bottom:14px;"></div>
+
+      <form id="registerOtpForm">
+        <div class="form-group" style="text-align:center;">
+          <label style="text-align:center;display:block;margin-bottom:8px;">أدخل كود التحقق (6 أرقام)</label>
+          <input type="text" id="regOtpInput" maxlength="6" inputmode="numeric" pattern="[0-9]{6}"
+                 placeholder="• • • • • •" required
+                 style="width:100%;padding:14px;font-size:24px;font-weight:800;letter-spacing:10px;text-align:center;direction:ltr;border-radius:12px;background:var(--input-bg);border:2px solid var(--input-border);color:var(--text);"/>
+        </div>
+
+        <button type="submit" id="regVerifyOtpBtn" class="btn btn-register" style="margin-top:8px;">
+          ✅ تأكيد الكود وإنشاء الحساب
+        </button>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:13px;">
+          <button type="button" id="resendRegOtpBtn" style="background:none;border:none;color:#60a5fa;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;">
+            🔄 إعادة إرسال الكود
+          </button>
+          <button type="button" id="changeRegEmailBtn" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-family:'Cairo',sans-serif;">
+            ✏️ تعديل البريد الإلكتروني
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="../js/spark_manifest.js?v=15"></script>
+  <script src="../js/github_engine.js?v=15"></script>
+  <script src="../js/i18n.js?v=15"></script>
+  <script src="../js/app.js?v=15"></script>
+  <script src="../js/auth.js?v=15"></script>
+  <script src="../js/ai_assistant.js?v=15"></script>
 </body>
 </html>

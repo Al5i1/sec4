@@ -1,6 +1,6 @@
-/* ═══════════════════════════════════════
-   js/auth.js  —  Login & Register API calls
-   ═══════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   js/auth.js — Login, Register (with Email OTP), & Forgot Password (with Email OTP)
+   ═══════════════════════════════════════════════════════════════════ */
 
 /* ── Toast helper ── */
 function showToast(msg, isErr = false) {
@@ -14,26 +14,50 @@ function showToast(msg, isErr = false) {
       fontFamily: "'Cairo', sans-serif", fontSize: '14px', fontWeight: '700',
       boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
       transform: 'translateY(80px)', opacity: '0',
-      transition: 'transform 0.3s, opacity 0.3s', zIndex: '999'
+      transition: 'transform 0.3s, opacity 0.3s', zIndex: '9999'
     });
     document.body.appendChild(toast);
   }
-  toast.textContent  = msg;
+  toast.textContent      = msg;
   toast.style.background = isErr ? '#f87171' : '#4ade80';
   toast.style.color      = isErr ? '#fff'     : '#052e16';
   toast.style.transform  = 'translateY(0)';
   toast.style.opacity    = '1';
-  setTimeout(() => { toast.style.transform = 'translateY(80px)'; toast.style.opacity = '0'; }, 3000);
+  setTimeout(() => { toast.style.transform = 'translateY(80px)'; toast.style.opacity = '0'; }, 3500);
 }
 
-/* ─────────────────────────────────────
-   LOGIN FORM
-───────────────────────────────────── */
-const forgotBtn   = document.getElementById('forgotPasswordBtn');
-const forgotModal = document.getElementById('forgotModal');
-const closeForgot = document.getElementById('closeForgotBtn');
-const verifyForm  = document.getElementById('forgotVerifyForm');
-const resetForm   = document.getElementById('forgotResetForm');
+/* ── Countdown helper for Resend OTP buttons ── */
+function startResendCooldown(btn, seconds = 45) {
+  if (!btn) return;
+  let rem = seconds;
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  const origText = '🔄 إعادة إرسال الكود';
+  const timer = setInterval(() => {
+    rem--;
+    if (rem <= 0) {
+      clearInterval(timer);
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.textContent = origText;
+    } else {
+      btn.textContent = `🔄 إعادة الإرسال (${rem} ث)`;
+    }
+  }, 1000);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   1. FORGOT PASSWORD (WITH EMAIL OTP VERIFICATION)
+   ═══════════════════════════════════════════════════════════════════ */
+const forgotBtn     = document.getElementById('forgotPasswordBtn');
+const forgotModal   = document.getElementById('forgotModal');
+const closeForgot   = document.getElementById('closeForgotBtn');
+const verifyForm    = document.getElementById('forgotVerifyForm');
+const resetForm     = document.getElementById('forgotResetForm');
+const resendFpBtn   = document.getElementById('resendFpOtpBtn');
+const backFpEmail   = document.getElementById('backFpEmailBtn');
+
+let currentFpEmail = '';
 
 if (forgotBtn && forgotModal) {
   forgotBtn.addEventListener('click', e => {
@@ -42,6 +66,8 @@ if (forgotBtn && forgotModal) {
     resetForm.style.display  = 'none';
     verifyForm.reset();
     resetForm.reset();
+    const fb = document.getElementById('fpOtpFallbackHint');
+    if (fb) fb.style.display = 'none';
     forgotModal.style.display = 'flex';
   });
 
@@ -49,53 +75,120 @@ if (forgotBtn && forgotModal) {
     forgotModal.style.display = 'none';
   });
 
-  verifyForm?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const email = document.getElementById('fpEmail').value.trim();
-    const phone = document.getElementById('fpPhone').value.trim();
+  backFpEmail?.addEventListener('click', () => {
+    resetForm.style.display  = 'none';
+    verifyForm.style.display = 'block';
+  });
+
+  async function requestForgotPasswordOtp(email) {
+    const sendBtn = document.getElementById('fpSendOtpBtn');
+    if (sendBtn) sendBtn.disabled = true;
     try {
       const res  = await fetch('../api/forgot_password.php', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body   : JSON.stringify({ step: 'verify', email, phone })
+        body   : JSON.stringify({ step: 'send_otp', email })
       });
       const data = await res.json();
+      if (sendBtn) sendBtn.disabled = false;
+
       if (data.success) {
-        showToast(data.message);
-        document.getElementById('fpVerifiedBanner').textContent = `👤 مرحباً ${data.user_name} — أدخل كلمة المرور الجديدة`;
+        currentFpEmail = email;
+        showToast(data.message || '📨 تم إرسال كود التحقق إلى بريدك الإلكتروني');
+        document.getElementById('fpVerifiedBanner').textContent =
+          `📧 تم إرسال كود التحقق (6 أرقام) إلى: ${email}`;
+
+        const fb = document.getElementById('fpOtpFallbackHint');
+        if (fb) {
+          if (data.fallback_notice) {
+            fb.innerHTML = data.fallback_notice;
+            fb.style.display = 'block';
+          } else {
+            fb.style.display = 'none';
+          }
+        }
+
         verifyForm.style.display = 'none';
         resetForm.style.display  = 'block';
+        document.getElementById('fpOtpCode')?.focus();
+        startResendCooldown(resendFpBtn, 45);
       } else {
-        showToast(data.message || 'تعذّر التحقق من البيانات', true);
+        showToast(data.message || 'تعذّر إرسال كود التحقق', true);
       }
     } catch {
+      if (sendBtn) sendBtn.disabled = false;
       showToast('تعذّر الاتصال بالخادم', true);
     }
+  }
+
+  verifyForm?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = document.getElementById('fpEmail').value.trim();
+    if (!email) {
+      showToast('يرجى إدخال البريد الإلكتروني المسجل', true);
+      return;
+    }
+    await requestForgotPasswordOtp(email);
+  });
+
+  resendFpBtn?.addEventListener('click', async () => {
+    if (!currentFpEmail) return;
+    await requestForgotPasswordOtp(currentFpEmail);
   });
 
   resetForm?.addEventListener('submit', async e => {
     e.preventDefault();
+    const otp_code         = (document.getElementById('fpOtpCode')?.value || '').trim();
     const new_password     = document.getElementById('fpNewPass').value;
     const confirm_password = document.getElementById('fpConfirmPass').value;
+
+    if (!/^[0-9]{6}$/.test(otp_code)) {
+      showToast('يرجى إدخال كود التحقق المكون من 6 أرقام بشكل صحيح', true);
+      return;
+    }
+    if (new_password.length < 8) {
+      showToast('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل', true);
+      return;
+    }
+    if (new_password !== confirm_password) {
+      showToast('كلمتا المرور غير متطابقتين', true);
+      return;
+    }
+
+    const submitBtn = document.getElementById('fpResetSubmitBtn');
+    if (submitBtn) submitBtn.disabled = true;
+
     try {
       const res  = await fetch('../api/forgot_password.php', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body   : JSON.stringify({ step: 'reset', new_password, confirm_password })
+        body   : JSON.stringify({
+          step: 'reset',
+          email: currentFpEmail,
+          otp_code,
+          new_password,
+          confirm_password
+        })
       });
       const data = await res.json();
+      if (submitBtn) submitBtn.disabled = false;
+
       if (data.success) {
-        showToast(data.message);
+        showToast(data.message || '✅ تم تغيير كلمة المرور بنجاح!');
         forgotModal.style.display = 'none';
       } else {
-        showToast(data.message || 'خطأ في تحديث كلمة المرور', true);
+        showToast(data.message || 'كود التحقق غير صحيح أو منتهي الصلاحية', true);
       }
     } catch {
+      if (submitBtn) submitBtn.disabled = false;
       showToast('تعذّر الاتصال بالخادم', true);
     }
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   2. LOGIN FORM
+   ═══════════════════════════════════════════════════════════════════ */
 const loginForm = document.getElementById('loginForm');
 if (loginForm) {
   loginForm.addEventListener('submit', async e => {
@@ -128,23 +221,26 @@ if (loginForm) {
         showToast(data.message || 'خطأ في تسجيل الدخول', true);
         btn.disabled = false;
       }
-    } catch (err) {
-      if (location.protocol === 'file:') {
-        showToast('⚠️ افتح الصفحة عبر http://localhost/sec4/html/index.html وليس كملف!', true);
-      } else {
-        showToast('تعذّر الاتصال بالخادم', true);
-      }
+    } catch {
+      showToast('تعذّر الاتصال بالخادم', true);
       btn.disabled = false;
     }
   });
 }
 
-/* ─────────────────────────────────────
-   REGISTER FORM
-───────────────────────────────────── */
-const registerForm = document.getElementById('registerForm');
-if (registerForm) {
+/* ═══════════════════════════════════════════════════════════════════
+   3. REGISTER FORM (WITH EMAIL OTP VERIFICATION)
+   ═══════════════════════════════════════════════════════════════════ */
+const registerForm    = document.getElementById('registerForm');
+const regOtpModal     = document.getElementById('registerOtpModal');
+const regOtpForm      = document.getElementById('registerOtpForm');
+const closeRegOtpBtn  = document.getElementById('closeRegOtpBtn');
+const changeRegEmail  = document.getElementById('changeRegEmailBtn');
+const resendRegOtpBtn = document.getElementById('resendRegOtpBtn');
 
+let pendingRegPayload = null;
+
+if (registerForm) {
   const latinOnly = /^[A-Za-z\s'\-]+$/;
 
   /* Password strength */
@@ -172,14 +268,61 @@ if (registerForm) {
     });
   });
 
-  /* Submit */
+  async function sendRegisterOtp(payload) {
+    const btn = registerForm.querySelector('button[type=submit]');
+    if (btn) btn.disabled = true;
+
+    try {
+      const res  = await fetch('../api/register.php', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ ...payload, step: 'send_otp' })
+      });
+      const data = await res.json();
+      if (btn) btn.disabled = false;
+
+      if (data.success) {
+        pendingRegPayload = payload;
+        showToast(data.message || '📨 تم إرسال كود التحقق إلى بريدك الإلكتروني');
+        const emailDisp = document.getElementById('regOtpEmailDisplay');
+        if (emailDisp) emailDisp.textContent = payload.email;
+
+        const fb = document.getElementById('regOtpFallbackHint');
+        if (fb) {
+          if (data.fallback_notice) {
+            fb.innerHTML = data.fallback_notice;
+            fb.style.display = 'block';
+          } else {
+            fb.style.display = 'none';
+          }
+        }
+
+        if (regOtpModal) {
+          regOtpModal.style.display = 'flex';
+          const otpInp = document.getElementById('regOtpInput');
+          if (otpInp) {
+            otpInp.value = '';
+            otpInp.focus();
+          }
+          startResendCooldown(resendRegOtpBtn, 45);
+        }
+      } else {
+        const msg = data.errors ? data.errors.join(' | ') : (data.message || 'خطأ في البيانات المدخلة');
+        showToast(msg, true);
+      }
+    } catch {
+      if (btn) btn.disabled = false;
+      showToast('تعذّر الاتصال بالخادم', true);
+    }
+  }
+
+  /* Step 1: Validate fields & Send OTP to Email */
   registerForm.addEventListener('submit', async e => {
     e.preventDefault();
 
     const lang = localStorage.getItem('lang') || 'ar';
-    const d    = T[lang];
+    const d    = (window.T && T[lang]) ? T[lang] : {};
 
-    /* Client-side validation */
     const fName   = document.getElementById('firstName');
     const lName   = document.getElementById('lastName');
     const email   = document.getElementById('email');
@@ -189,12 +332,12 @@ if (registerForm) {
     const confirm = document.getElementById('confirmPassword');
 
     const fields = [
-      { el: fName,   hint: 'hintFirst',   ok: v => v.trim() !== '' && latinOnly.test(v),              msg: 'reg.errName'    },
-      { el: lName,   hint: 'hintLast',    ok: v => v.trim() !== '' && latinOnly.test(v),              msg: 'reg.errName'    },
-      { el: email,   hint: 'hintEmail',   ok: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),             msg: 'reg.errEmail'   },
-      { el: phone,   hint: 'hintPhone',   ok: v => /^[0-9\s()\-]{6,15}$/.test(v),                    msg: 'reg.errPhone'   },
-      { el: pass,    hint: 'hintPass',    ok: v => v.length >= 8,                                     msg: 'reg.errPass'    },
-      { el: confirm, hint: 'hintConfirm', ok: v => v !== '' && v === pass.value,                      msg: 'reg.errConfirm' },
+      { el: fName,   hint: 'hintFirst',   ok: v => v.trim() !== '' && latinOnly.test(v),  msg: 'reg.errName'    },
+      { el: lName,   hint: 'hintLast',    ok: v => v.trim() !== '' && latinOnly.test(v),  msg: 'reg.errName'    },
+      { el: email,   hint: 'hintEmail',   ok: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), msg: 'reg.errEmail'   },
+      { el: phone,   hint: 'hintPhone',   ok: v => /^[0-9\s()\-]{6,15}$/.test(v),        msg: 'reg.errPhone'   },
+      { el: pass,    hint: 'hintPass',    ok: v => v.length >= 8,                         msg: 'reg.errPass'    },
+      { el: confirm, hint: 'hintConfirm', ok: v => v !== '' && v === pass.value,          msg: 'reg.errConfirm' },
     ];
 
     let valid = true;
@@ -202,7 +345,10 @@ if (registerForm) {
       const hintEl = document.getElementById(f.hint);
       if (!f.ok(f.el.value)) {
         f.el.classList.add('err');
-        if (hintEl) { hintEl.textContent = d[f.msg] || ''; hintEl.classList.add('show'); }
+        if (hintEl) {
+          if (d[f.msg]) hintEl.textContent = d[f.msg];
+          hintEl.classList.add('show');
+        }
         valid = false;
       }
     });
@@ -210,40 +356,69 @@ if (registerForm) {
 
     const fullPhone = (cCode ? cCode.value : '+973') + phone.value.trim().replace(/^0+/, '');
 
-    /* API call */
-    const btn = registerForm.querySelector('button[type=submit]');
-    btn.disabled = true;
+    await sendRegisterOtp({
+      first_name       : fName.value.trim(),
+      last_name        : lName.value.trim(),
+      email            : email.value.trim(),
+      phone            : fullPhone,
+      password         : pass.value,
+      confirm_password : confirm.value
+    });
+  });
+
+  /* Step 2: Verify OTP & Complete Account Creation */
+  regOtpForm?.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!pendingRegPayload) return;
+
+    const otpCode = (document.getElementById('regOtpInput')?.value || '').trim();
+    if (!/^[0-9]{6}$/.test(otpCode)) {
+      showToast('يرجى إدخال كود التحقق المكون من 6 أرقام', true);
+      return;
+    }
+
+    const verifyBtn = document.getElementById('regVerifyOtpBtn');
+    if (verifyBtn) verifyBtn.disabled = true;
 
     try {
       const res  = await fetch('../api/register.php', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body   : JSON.stringify({
-          first_name       : fName.value.trim(),
-          last_name        : lName.value.trim(),
-          email            : email.value.trim(),
-          phone            : fullPhone,
-          password         : pass.value,
-          confirm_password : confirm.value
+          ...pendingRegPayload,
+          step     : 'verify_otp',
+          otp_code : otpCode
         })
       });
       const data = await res.json();
+      if (verifyBtn) verifyBtn.disabled = false;
 
       if (data.success) {
-        showToast(d['reg.success'] || '✅ تم إنشاء الحساب!');
-        setTimeout(() => location.href = 'index.html', 1200);
+        if (data.user) {
+          sessionStorage.setItem('auth', JSON.stringify(data.user));
+        }
+        showToast(data.message || '🎉 تم تأكيد البريد الإلكتروني وإنشاء الحساب بنجاح!');
+        setTimeout(() => location.href = data.redirect || 'home.html', 900);
       } else {
-        const msg = data.errors ? data.errors.join(' | ') : (data.message || 'خطأ');
-        showToast(msg, true);
-        btn.disabled = false;
+        showToast(data.message || '❌ كود التحقق غير صحيح، يرجى المحاولة مرة أخرى', true);
       }
-    } catch (err) {
-      if (location.protocol === 'file:') {
-        showToast('⚠️ افتح الصفحة عبر http://localhost/sec4/html/index.html وليس كملف!', true);
-      } else {
-        showToast('تعذّر الاتصال بالخادم', true);
-      }
-      btn.disabled = false;
+    } catch {
+      if (verifyBtn) verifyBtn.disabled = false;
+      showToast('تعذّر الاتصال بالخادم', true);
     }
+  });
+
+  resendRegOtpBtn?.addEventListener('click', async () => {
+    if (!pendingRegPayload) return;
+    await sendRegisterOtp(pendingRegPayload);
+  });
+
+  closeRegOtpBtn?.addEventListener('click', () => {
+    if (regOtpModal) regOtpModal.style.display = 'none';
+  });
+
+  changeRegEmail?.addEventListener('click', () => {
+    if (regOtpModal) regOtpModal.style.display = 'none';
+    document.getElementById('email')?.focus();
   });
 }
