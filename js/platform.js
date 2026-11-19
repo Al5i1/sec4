@@ -417,21 +417,111 @@ const Platform = (() => {
     }
   }
 
+
+  /* Public, reviewed Blackboard metadata appears in the EXISTING file grid.
+     No protected file URL or student data is published by this frontend. */
+  const PUBLIC_FEED = 'https://sec4-sync-free.ali3mk84888.workers.dev/api/public-feed';
+  let publicRecords = null;
+  let publicFeedPromise = null;
+
+  function publicSubject(record) {
+    const raw = [record.subject, record.course, record.course_name,
+      record.course_title, record.course_id, record.title].filter(Boolean).join(' ').toUpperCase();
+    const match = raw.match(/\bENG\s*0?(11|12|13|14)\b|\bENGL\s*0?(1011|1012|1013|1014)\b/);
+    if (match) return match[1] ? 'ENG' + match[1] : 'ENG' + match[2].slice(-2);
+    if (/\bSSO\b|\bSSO011\b/.test(raw)) return 'SSO';
+    return '';
+  }
+
+  async function getPublicRecords() {
+    if (publicRecords) return publicRecords;
+    if (publicFeedPromise) return publicFeedPromise;
+    publicFeedPromise = (async () => {
+      const output = [];
+      let offset = 0;
+      for (let page = 0; page < 30; page++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 12000);
+        let data;
+        try {
+          const response = await fetch(PUBLIC_FEED + '?offset=' + offset, {
+            signal: controller.signal, credentials: 'omit', cache: 'no-store'
+          });
+          if (!response.ok) throw Error('Public feed HTTP ' + response.status);
+          data = await response.json();
+        } finally { clearTimeout(timer); }
+        if (!Array.isArray(data.records)) throw Error('Invalid public feed');
+        output.push(...data.records);
+        if (data.next_offset == null || data.next_offset === offset) break;
+        offset = data.next_offset;
+      }
+      publicRecords = output;
+      return output;
+    })();
+    try { return await publicFeedPromise; }
+    finally { publicFeedPromise = null; }
+  }
+
+  function renderPublicRecord(record) {
+    // Only text fields from the server-reviewed public feed. No download button.
+    const title = escapeHtml(record.title || record.name || record.filename || 'مادة Blackboard');
+    const course = escapeHtml(record.course || record.course_name || record.subject || '');
+    const detail = escapeHtml(record.description || '');
+    return `<div class="file-card" data-sec4-public="1">
+      <div><div class="file-head"><div style="display:flex;gap:10px;align-items:flex-start">
+      <div class="file-type-ic">📘</div><div><div class="file-title">${title}</div>
+      <span class="sc-tag">Blackboard · معلومات عامة</span></div></div></div>
+      ${detail ? `<div class="file-desc">${detail}</div>` : ''}
+      ${course ? `<div class="file-desc">${course}</div>` : ''}</div>
+      <div class="file-meta"><span>بيانات منشورة للمشاهدة فقط</span></div>
+    </div>`;
+  }
+
+  async function appendPublicToExistingGrid(section, subject, folder, requestKey) {
+    if (section !== 'blackboard' || folder != null) return;
+    try {
+      const records = await getPublicRecords();
+      if (requestKey !== currentBrowseRequest || currentSection !== section ||
+          currentSubject !== subject || currentFolder !== folder) return;
+      const grid = document.getElementById('fmFilesGrid');
+      if (!grid) return;
+      const search = (document.getElementById('fmLocalSearch')?.value || '').toLowerCase().trim();
+      const seen = new Set(cachedFiles.map(f => String(f.title || '').trim().toLowerCase()));
+      const matches = records.filter(r => {
+        if (!r || typeof r !== 'object' || publicSubject(r) !== subject) return false;
+        const title = String(r.title || r.name || r.filename || '').trim();
+        if (!title || seen.has(title.toLowerCase())) return false;
+        if (search && !(title + ' ' + (r.description || '')).toLowerCase().includes(search)) return false;
+        seen.add(title.toLowerCase());
+        return true;
+      });
+      if (!matches.length) return;
+      if (!cachedFiles.length) grid.replaceChildren();
+      grid.insertAdjacentHTML('beforeend', matches.map(renderPublicRecord).join(''));
+    } catch (err) {
+      console.warn('SEC4 public feed unavailable:', err.message);
+    }
+  }
+  let currentBrowseRequest = 0;
+
   async function loadSectionContent() {
+    const requestKey = ++currentBrowseRequest;
+    const section = currentSection, subject = currentSubject, folder = currentFolder;
     const sort = document.getElementById('fmSortSelect')?.value || 'date_desc';
     const url  = `../api/files.php?mode=browse&section=${encodeURIComponent(currentSection)}&subject=${encodeURIComponent(currentSubject)}&folder_id=${currentFolder ?? ''}&sort=${encodeURIComponent(sort)}`;
 
     try {
       const res  = await fetch(url);
       const data = await res.json();
-      if (!data.success) return;
+      if (!data.success || requestKey !== currentBrowseRequest) return;
 
       cachedFolders = data.folders || [];
       cachedFiles   = data.files   || [];
 
       renderBreadcrumbs(data.breadcrumbs || [], 'fmBreadcrumbs', currentSubject ? `📂 ${currentSubject}` : '📂 المجلد الرئيسي', false);
       renderFolderAndFileGrids(cachedFolders, cachedFiles, 'fmFoldersWrap', 'fmFoldersGrid', 'fmFilesGrid', false);
-    } catch {}
+    } catch (err) { console.warn('SEC4 file browser:', err.message); }
+    await appendPublicToExistingGrid(section, subject, folder, requestKey);
   }
 
   function renderBreadcrumbs(crumbs, targetId, rootLabel, inSpark) {
@@ -481,6 +571,7 @@ const Platform = (() => {
     const q = (document.getElementById('fmLocalSearch')?.value || '').toLowerCase().trim();
     if (!q) {
       renderFolderAndFileGrids(cachedFolders, cachedFiles, 'fmFoldersWrap', 'fmFoldersGrid', 'fmFilesGrid', false);
+      appendPublicToExistingGrid(currentSection, currentSubject, currentFolder, currentBrowseRequest);
       return;
     }
     renderFolderAndFileGrids(
@@ -488,6 +579,7 @@ const Platform = (() => {
       cachedFiles.filter(f => `${f.title} ${f.description || ''} ${f.original_name || ''}`.toLowerCase().includes(q)),
       'fmFoldersWrap', 'fmFoldersGrid', 'fmFilesGrid', false
     );
+    appendPublicToExistingGrid(currentSection, currentSubject, currentFolder, currentBrowseRequest);
   }
 
   function renderFileCard(f, inSpark = false) {
