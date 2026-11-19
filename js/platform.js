@@ -427,10 +427,27 @@ const Platform = (() => {
   function publicSubject(record) {
     const raw = [record.subject, record.course, record.course_name,
       record.course_title, record.course_id, record.title].filter(Boolean).join(' ').toUpperCase();
+    if (/READING\s*&\s*VOCABULARY/.test(raw)) return 'ENG11';
+    if (/WRITING\s*&\s*GRAMMAR/.test(raw)) return 'ENG12';
+    if (/LISTENING\s*&\s*SPEAKING/.test(raw)) return 'ENG13';
+    if (/DIGITAL\s+ENGLISH\s+LANGUAGE\s+DEVELOPMENT/.test(raw)) return 'ENG14';
+    if (/STUDY\s+SKILLS\s+FOR\s+ORIENTATION/.test(raw)) return 'SSO';
     const match = raw.match(/\bENG\s*0?(11|12|13|14)\b|\bENGL\s*0?(1011|1012|1013|1014)\b/);
     if (match) return match[1] ? 'ENG' + match[1] : 'ENG' + match[2].slice(-2);
-    if (/\bSSO\b|\bSSO011\b/.test(raw)) return 'SSO';
+    if (/\bSSO\s*0?11\b|\bSSO\b/.test(raw)) return 'SSO';
     return '';
+  }
+
+  function publicFileUrl(record) {
+    const value = record.public_url || record.download_url || record.url || '';
+    if (typeof value !== 'string' || !value.trim()) return '';
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== 'https:') return '';
+      // Blackboard links can require login; never advertise those as public downloads.
+      if (parsed.hostname === 'blackboard.uob.edu.bh') return '';
+      return parsed.href;
+    } catch { return ''; }
   }
 
   async function getPublicRecords() {
@@ -452,8 +469,10 @@ const Platform = (() => {
         } finally { clearTimeout(timer); }
         if (!Array.isArray(data.records)) throw Error('Invalid public feed');
         output.push(...data.records);
-        if (data.next_offset == null || data.next_offset === offset) break;
-        offset = data.next_offset;
+        if (data.next_offset == null) break;
+        const next = Number(data.next_offset);
+        if (!Number.isSafeInteger(next) || next <= offset) break;
+        offset = next;
       }
       publicRecords = output;
       return output;
@@ -463,17 +482,21 @@ const Platform = (() => {
   }
 
   function renderPublicRecord(record) {
-    // Only text fields from the server-reviewed public feed. No download button.
-    const title = escapeHtml(record.title || record.name || record.filename || 'مادة Blackboard');
+    const name = String(record.title || record.name || record.filename || 'مادة Blackboard');
+    const title = escapeHtml(name);
     const course = escapeHtml(record.course || record.course_name || record.subject || '');
     const detail = escapeHtml(record.description || '');
+    const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+    const icon = getFileIcon(extension, record.type);
+    const url = publicFileUrl(record);
     return `<div class="file-card" data-sec4-public="1">
       <div><div class="file-head"><div style="display:flex;gap:10px;align-items:flex-start">
-      <div class="file-type-ic">📘</div><div><div class="file-title">${title}</div>
-      <span class="sc-tag">Blackboard · معلومات عامة</span></div></div></div>
+      <div class="file-type-ic">${icon}</div><div><div class="file-title">${title}</div>
+      <span class="sc-tag">Blackboard</span></div></div></div>
       ${detail ? `<div class="file-desc">${detail}</div>` : ''}
       ${course ? `<div class="file-desc">${course}</div>` : ''}</div>
-      <div class="file-meta"><span>بيانات منشورة للمشاهدة فقط</span></div>
+      <div class="file-meta"><span>${url ? 'رابط ملف متاح' : 'اسم الملف ومعلوماته'}</span></div>
+      ${url ? `<div class="file-actions" style="margin-top:10px"><a class="f-btn primary" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">🔗 فتح الملف</a></div>` : ''}
     </div>`;
   }
 
@@ -488,7 +511,7 @@ const Platform = (() => {
       const search = (document.getElementById('fmLocalSearch')?.value || '').toLowerCase().trim();
       const seen = new Set(cachedFiles.map(f => String(f.title || '').trim().toLowerCase()));
       const matches = records.filter(r => {
-        if (!r || typeof r !== 'object' || publicSubject(r) !== subject) return false;
+        if (!r || typeof r !== 'object' || r.type !== 'file' || publicSubject(r) !== subject) return false;
         const title = String(r.title || r.name || r.filename || '').trim();
         if (!title || seen.has(title.toLowerCase())) return false;
         if (search && !(title + ' ' + (r.description || '')).toLowerCase().includes(search)) return false;
