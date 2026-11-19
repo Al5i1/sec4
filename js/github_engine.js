@@ -1571,6 +1571,54 @@
       return jsonResponse({ success: true, backups: [], message: 'البيانات محفوظة تلقائياً في السيرفر السحابي المشترك (Al5i1/sec4-db).' });
     }
 
+    /* 12b. EXTERNAL CLOUD BLACKBOARD SERVER CONTROL (Admin Only) */
+    if (path.endsWith('/api/bb_cloud.php')) {
+      if (!currUser || currUser.role !== 'admin') {
+        return jsonResponse({ success: false, message: 'صلاحية مرفوضة' }, 403);
+      }
+      const token = getCloudToken();
+      const BB_KEY_HEX = '534543345f42425f434c4f55445f5641554c545f4b45595f323032365f39393831';
+
+      if (bodyData.action === 'save_session') {
+        const rawCookie = String(bodyData.cookie || '').trim();
+        if (!rawCookie) return jsonResponse({ success: false, message: 'يرجى لصق الجلسة أولاً' }, 422);
+
+        const keyBytes = new Uint8Array(BB_KEY_HEX.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+        const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const plain = new TextEncoder().encode(JSON.stringify({ cookie: rawCookie, updated_at: new Date().toISOString() }));
+        const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, plain);
+        const toB64 = arr => btoa(String.fromCharCode(...new Uint8Array(arr)));
+        const vaultJson = JSON.stringify({ iv: toB64(iv), data: toB64(cipherBuf), updated_at: new Date().toISOString() }, null, 2);
+
+        const vaultUrl = `https://api.github.com/repos/${CLOUD_REPO}/contents/vault/bb_auth.enc.json`;
+        let sha;
+        const gRes = await origFetch(vaultUrl, { headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}` } });
+        if (gRes.ok) { const j = await gRes.json(); sha = j.sha; }
+
+        const putBody = { message: 'Update encrypted Blackboard session in Cloud Vault', content: btoa(vaultJson) };
+        if (sha) putBody.sha = sha;
+        const pRes = await origFetch(vaultUrl, {
+          method: 'PUT',
+          headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(putBody)
+        });
+        if (!pRes.ok) return jsonResponse({ success: false, message: 'تعذر حفظ الجلسة في السيرفر الخارجي' }, 500);
+      }
+
+      // Trigger immediate Cloud Worker run on GitHub external servers
+      await origFetch(`https://api.github.com/repos/${CLOUD_REPO}/actions/workflows/blackboard_cloud_sync.yml/dispatches`, {
+        method: 'POST',
+        headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref: 'main' })
+      }).catch(() => {});
+
+      return jsonResponse({
+        success: true,
+        message: '☁️ تم تشفير الجلسة وتشغيل السيرفر الخارجي بنجاح! سيفحص البلاكبورد تلقائياً كل 15 دقيقة حتى لو طفى النت من كل أجهزتك.'
+      });
+    }
+
     /* 13. EMAIL OTP CONFIG & LOGS (Admin Only) */
     if (path.endsWith('/api/email_config.php')) {
       if (!currUser || currUser.role !== 'admin') {

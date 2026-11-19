@@ -739,6 +739,23 @@ const AdminApp = (() => {
     }
   }
 
+  async function triggerExternalCloudSync() {
+    const stEl = document.getElementById('bbCloudSyncStatusText');
+    if (stEl) stEl.textContent = '⏳ جاري إرسال أمر الفحص للسيرفر الخارجي...';
+    try {
+      const res  = await fetch('../api/bb_cloud.php', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ action: 'trigger_only' })
+      });
+      const data = await res.json();
+      toast(data.message || '☁️ تم تشغيل السيرفر الخارجي!');
+      if (stEl) stEl.textContent = '✅ السيرفر الخارجي يفحص البلاكبورد الآن في السحابة (يعمل كل 15 دقيقة تلقائياً).';
+    } catch {
+      toast('تعذر الاتصال بالسيرفر الخارجي', true);
+    }
+  }
+
   function renderUsersTable(users) {
     const tbody = document.getElementById('admUsersBody');
     if (!users.length) {
@@ -1287,6 +1304,27 @@ const AdminApp = (() => {
         toast(data.message || 'خطأ', true);
       }
     });
+
+    /* External Cloud Blackboard Session Form */
+    document.getElementById('bbCloudSessionForm')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const cookie = document.getElementById('bbCloudCookieInp')?.value.trim() || '';
+      const stEl   = document.getElementById('bbCloudSyncStatusText');
+      if (stEl) stEl.textContent = '⏳ جاري تشفير الجلسة بـ AES-256-GCM وحفظها في السيرفر الخارجي...';
+      const res = await fetch('../api/bb_cloud.php', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ action: 'save_session', cookie })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast(data.message);
+        document.getElementById('bbCloudCookieInp').value = '';
+        if (stEl) stEl.textContent = data.message;
+      } else {
+        toast(data.message || 'خطأ', true);
+      }
+    });
   }
 
   async function logout() {
@@ -1337,6 +1375,7 @@ const AdminApp = (() => {
     loadEmailOtpConfig,
     copyGasScript,
     testSendOtpEmail,
+    triggerExternalCloudSync,
     filterSparkCodes,
     copyCode,
     copyGeneratedCodes,

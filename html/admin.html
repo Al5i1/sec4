@@ -699,6 +699,24 @@
           <div id="activeOtpsList" style="font-size:13px;color:var(--text-muted);">جاري التحميل...</div>
         </div>
       </div>
+
+      <!-- External Cloud Blackboard Sync Server Control (24/7 Independent Server) -->
+      <div class="panel-card" style="margin-top:18px;border:1.5px solid rgba(99,102,241,0.4);">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+          <h3 style="margin:0;">☁️ سيرفر البلاكبورد الخارجي (يعمل كل 15 دقيقة 24/7 حتى لو طفى النت من كل أجهزتك)</h3>
+          <button type="button" class="f-btn primary" onclick="AdminApp.triggerExternalCloudSync()">⚡ فحص وسحب فوري من السيرفر الخارجي الآن</button>
+        </div>
+        <p style="color:var(--text-muted);font-size:12.5px;line-height:1.7;margin-bottom:12px;">
+          السيرفر الخارجي (GitHub Cloud Server) شغال 24 ساعة في السحابة وماله علاقة بلابتوبك أو جوالك أو النت عندك.
+          <br/>🔹 فقط عندما تنتهي صلاحية جلسة الجامعة (ويوصلك تنبيه بالإيميل)، الصق كوكي الجلسة (<code>BbRouter</code> أو <code>document.cookie</code>) هنا مرة واحدة ليتشفّر بـ <strong>AES-256-GCM</strong> ويكمل السيرفر الخارجي السحب لحاله:
+        </p>
+        <form id="bbCloudSessionForm" style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input type="text" id="bbCloudCookieInp" placeholder="الصق كوكي جلسة البلاكبورد هنا لتشفيرها في السيرفر الخارجي..."
+                 style="flex:1;min-width:240px;direction:ltr;text-align:left;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);" required/>
+          <button type="submit" class="f-btn primary" style="padding:10px 18px;">🔐 تشفير وحفظ في السيرفر الخارجي</button>
+        </form>
+        <div id="bbCloudSyncStatusText" style="margin-top:10px;font-size:12.5px;color:#4ade80;"></div>
+      </div>
     </section>
 
     <!-- ─────────────────────────────────────────────────
@@ -842,10 +860,10 @@
     </div>
   </div>
 
-  <script src="../js/spark_manifest.js?v=17"></script>
-  <script src="../js/github_engine.js?v=17"></script>
-  <script src="../js/i18n.js?v=17"></script>
-  <script src="../js/app.js?v=17"></script>
-  <script src="../js/admin.js?v=17"></script>
+  <script src="../js/spark_manifest.js?v=18"></script>
+  <script src="../js/github_engine.js?v=18"></script>
+  <script src="../js/i18n.js?v=18"></script>
+  <script src="../js/app.js?v=18"></script>
+  <script src="../js/admin.js?v=18"></script>
 </body>
 </html>
