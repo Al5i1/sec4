@@ -6,7 +6,8 @@
   "permissions": [
     "alarms",
     "storage",
-    "tabs"
+    "tabs",
+    "cookies"
   ],
   "host_permissions": [
     "https://blackboard.uob.edu.bh/*",

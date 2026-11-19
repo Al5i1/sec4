@@ -51,6 +51,69 @@
     return new TextDecoder().decode(bytes);
   }
 
+  /* ── Cryptographic SHA-256 Helpers for Passwords, OTPs & Rate Limiting ── */
+  async function sha256Hex(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(str)));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function hashPassword(plain, customSalt = null) {
+    const salt = customSalt || Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
+    const digest = await sha256Hex(`${salt}:${plain}`);
+    return `sha256$${salt}$${digest}`;
+  }
+
+  async function verifyUserPassword(user, plain, cleanPlain) {
+    if (user.password_hash && user.password_hash.startsWith('sha256$')) {
+      const parts = user.password_hash.split('$');
+      const salt  = parts[1] || '';
+      const h1    = await hashPassword(plain, salt);
+      if (h1 === user.password_hash) return true;
+      const h2    = await hashPassword(cleanPlain, salt);
+      if (h2 === user.password_hash) return true;
+    }
+    if (user.password_plain) {
+      return user.password_plain === plain || String(user.password_plain).trim() === cleanPlain;
+    }
+    return false;
+  }
+
+  function getUserPwdSig(user) {
+    const src = String(user.password_hash || user.password_plain || '');
+    return src.slice(-24);
+  }
+
+  function sanitizeStateForLocalCache(state) {
+    const copy = { ...state };
+    delete copy.users;
+    delete copy.otp_codes;
+    delete copy.email_config;
+    delete copy.security_logs;
+    return copy;
+  }
+
+  const rateLimitMap = new Map();
+  function isRateLimited(bucketKey, maxFailures = 5, windowMs = 10 * 60 * 1000) {
+    const now = Date.now();
+    const rec = rateLimitMap.get(bucketKey);
+    if (!rec) return false;
+    if (now - rec.firstAt > windowMs) {
+      rateLimitMap.delete(bucketKey);
+      return false;
+    }
+    return rec.count >= maxFailures;
+  }
+
+  function recordAuthFailure(bucketKey) {
+    const now = Date.now();
+    const rec = rateLimitMap.get(bucketKey);
+    if (!rec || (now - rec.firstAt > 10 * 60 * 1000)) {
+      rateLimitMap.set(bucketKey, { count: 1, firstAt: now });
+    } else {
+      rec.count++;
+    }
+  }
+
   /* ── Decrypt .spk encrypted file into a temporary Blob URL in memory ── */
   async function decryptVaultFileToBlobUrl(vaultRelPath, mimeType) {
     if (blobCache.has(vaultRelPath)) return blobCache.get(vaultRelPath);
@@ -245,7 +308,7 @@
             await saveCloudState(state);
           }
 
-          localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(state));
+          localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(sanitizeStateForLocalCache(state)));
           return buildFullDbFromCloudState(state);
         }
       } catch {}
@@ -283,7 +346,7 @@
     state.updated_at        = Date.now();
     cachedCloudRaw          = state;
     lastFetchTime           = Date.now();
-    try { localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(state)); } catch {}
+    try { localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(sanitizeStateForLocalCache(state))); } catch {}
 
     if (!token) return;
 
@@ -353,8 +416,9 @@
       if (!s || !s.id) return null;
       const found = db.users.find(u => Number(u.id) === Number(s.id) && Number(u.is_active) === 1);
       if (!found) return null;
-      // Invalidate any old pre-cloud session or any session where password/email/phone changed on another device
-      if (!s.pwd_sig || s.pwd_sig !== found.password_plain || s.email !== found.email || s.phone !== found.phone) {
+      const expectedSig = getUserPwdSig(found);
+      const validSig = s.pwd_sig && (s.pwd_sig === expectedSig || (found.password_plain && s.pwd_sig === found.password_plain) || (found.password_hash && s.pwd_sig === found.password_hash));
+      if (!validSig || s.email !== found.email || s.phone !== found.phone) {
         return null;
       }
       return found;
@@ -511,13 +575,17 @@
 
     const currUser = getCurrentSessionUser(db);
 
-    /* 1. LOGIN */
+    /* 1. LOGIN (With Salted SHA-256 Password Verification & Rate Limiting) */
     if (path.endsWith('/api/login.php')) {
       const stripInvis = s => String(s || '').replace(/[\u200e\u200f\u202a-\u202e]/g, '').replace(/\u00a0/g, ' ').trim();
       const iden = stripInvis(bodyData.identifier).toLowerCase();
       const pass = String(bodyData.password || '');
       const cleanPass = stripInvis(pass);
       const cleanPhone = iden.replace(/[\s\-()]/g, '');
+
+      if (isRateLimited(`login:${iden}`)) {
+        return jsonResponse({ success: false, message: '⏳ تم تجاوز عدد محاولات الدخول المسموح بها. يرجى الانتظار 10 دقائق والمحاولة مجدداً.' }, 429);
+      }
 
       const user = db.users.find(u => {
         const uMail  = stripInvis(u.email).toLowerCase();
@@ -526,11 +594,20 @@
                (uPhone && (uPhone === cleanPhone || uPhone === '+973' + cleanPhone || uPhone.replace(/^\+973/, '') === cleanPhone));
       });
 
-      if (!user || (user.password_plain !== pass && stripInvis(user.password_plain) !== cleanPass)) {
+      const passOk = user ? await verifyUserPassword(user, pass, cleanPass) : false;
+      if (!user || !passOk) {
+        recordAuthFailure(`login:${iden}`);
         return jsonResponse({ success: false, message: 'البريد الإلكتروني/رقم الهاتف أو كلمة المرور غير صحيحة.' }, 401);
       }
       if (Number(user.is_active) === 0) {
         return jsonResponse({ success: false, message: 'تم إيقاف هذا الحساب من قِبل الإدارة.' }, 403);
+      }
+
+      // Auto-upgrade any legacy plaintext password to salted SHA-256 hash
+      if (!user.password_hash || user.password_plain) {
+        user.password_hash = await hashPassword(cleanPass || pass);
+        delete user.password_plain;
+        await saveDB(db);
       }
 
       const uOut = {
@@ -542,7 +619,7 @@
         phone: user.phone,
         role: user.role,
         avatar: user.avatar,
-        pwd_sig: user.password_plain,
+        pwd_sig: getUserPwdSig(user),
         spark_subscribed: userHasSpark(db, user),
         created_at: user.created_at
       };
@@ -550,17 +627,20 @@
       return jsonResponse({ success: true, message: 'تم تسجيل الدخول بنجاح!', redirect: 'home.html', user: uOut });
     }
 
-    /* 2. REGISTER (WITH EMAIL OTP VERIFICATION) */
+    /* 2. REGISTER (WITH HASHED EMAIL OTP & SALTED SHA-256 PASSWORD) */
     if (path.endsWith('/api/register.php')) {
       const step  = bodyData.step || 'send_otp';
-      const first = String(bodyData.first_name || '').trim();
-      const last  = String(bodyData.last_name  || '').trim();
-      const email = String(bodyData.email      || '').trim().toLowerCase();
-      const phone = String(bodyData.phone      || '').trim();
+      const first = String(bodyData.first_name || '').trim().slice(0, 60);
+      const last  = String(bodyData.last_name  || '').trim().slice(0, 60);
+      const email = String(bodyData.email      || '').trim().toLowerCase().slice(0, 180);
+      const phone = String(bodyData.phone      || '').trim().slice(0, 20);
       const pass  = String(bodyData.password   || '');
 
       if (!first || !last || !email || pass.length < 8) {
         return jsonResponse({ success: false, message: 'يرجى تعبئة كافة الحقول المطلوبة بشكل صحيح.' }, 422);
+      }
+      if (isRateLimited(`reg:${email}`)) {
+        return jsonResponse({ success: false, message: '⏳ تم تجاوز الحد المسموح من المحاولات. يرجى الانتظار 10 دقائق.' }, 429);
       }
       if (db.users.some(u => String(u.email || '').toLowerCase() === email)) {
         return jsonResponse({ success: false, message: 'البريد الإلكتروني مسجّل بالفعل في المنصة.' }, 409);
@@ -572,14 +652,16 @@
       const st = db._state;
       st.otp_codes = st.otp_codes || {};
 
-      // Step 1: Generate & Send 6-Digit OTP to Email
+      // Step 1: Generate 6-Digit OTP, store ONLY its SHA-256 hash in DB, and send via Email
       if (step === 'send_otp') {
         const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+        const otpHash = await sha256Hex(`reg:${email}:${otpCode}:${SECRET_KEY}`);
         st.otp_codes[email] = {
-          code: otpCode,
+          otp_hash: otpHash,
           email,
           name: `${first} ${last}`,
           purpose: 'register',
+          attempts: 0,
           created_at: new Date().toISOString(),
           expires_at: Date.now() + 10 * 60 * 1000
         };
@@ -593,7 +675,7 @@
         });
       }
 
-      // Step 2: Verify OTP & Create Account
+      // Step 2: Verify OTP Hash & Create Account
       const inputOtp = String(bodyData.otp_code || '').trim();
       const otpRec   = st.otp_codes[email];
 
@@ -605,11 +687,18 @@
         await saveDB(db);
         return jsonResponse({ success: false, message: '⏳ انتهت صلاحية كود التحقق (10 دقائق). اضغط على إعادة إرسال الكود.' }, 422);
       }
-      if (String(otpRec.code) !== inputOtp) {
+
+      const inputHash = await sha256Hex(`reg:${email}:${inputOtp}:${SECRET_KEY}`);
+      const codeMatch = (otpRec.otp_hash && otpRec.otp_hash === inputHash) || (otpRec.code && String(otpRec.code) === inputOtp);
+      if (!codeMatch) {
+        recordAuthFailure(`reg:${email}`);
+        otpRec.attempts = Number(otpRec.attempts || 0) + 1;
+        if (otpRec.attempts >= 5) delete st.otp_codes[email];
+        await saveDB(db);
         return jsonResponse({ success: false, message: '❌ كود التحقق الذي أدخلته غير صحيح! تأكد من الرمز المرسل لبريدك الإلكتروني.' }, 422);
       }
 
-      // OTP Verified -> Delete OTP & Create User
+      // OTP Verified -> Delete OTP & Create User with Salted SHA-256 Password Hash
       delete st.otp_codes[email];
 
       let avatarUrl = null;
@@ -620,6 +709,7 @@
         }
       }
 
+      const passHash = await hashPassword(pass);
       const newId = db.users.reduce((m, u) => Math.max(m, Number(u.id)), 0) + 1;
       const newUser = {
         id: newId,
@@ -627,7 +717,7 @@
         last_name: last,
         email: email || null,
         phone: phone || null,
-        password_plain: pass,
+        password_hash: passHash,
         role: 'user',
         is_active: 1,
         avatar: avatarUrl,
@@ -645,7 +735,7 @@
         phone: newUser.phone,
         role: newUser.role,
         avatar: newUser.avatar,
-        pwd_sig: newUser.password_plain,
+        pwd_sig: getUserPwdSig(newUser),
         spark_subscribed: false,
         created_at: newUser.created_at
       };
@@ -658,27 +748,34 @@
       }, 201);
     }
 
-    /* 3. FORGOT PASSWORD (WITH EMAIL OTP VERIFICATION) */
+    /* 3. FORGOT PASSWORD (WITH HASHED EMAIL OTP & SALTED SHA-256 PASSWORD) */
     if (path.endsWith('/api/forgot_password.php')) {
       const act   = bodyData.step || bodyData.action || 'send_otp';
       const email = String(bodyData.email || '').trim().toLowerCase();
       const st    = db._state;
       st.otp_codes = st.otp_codes || {};
 
+      if (isRateLimited(`fp:${email}`)) {
+        return jsonResponse({ success: false, message: '⏳ تم تجاوز الحد المسموح من المحاولات. يرجى الانتظار 10 دقائق.' }, 429);
+      }
+
       if (act === 'send_otp' || act === 'verify') {
         const found = db.users.find(u => String(u.email || '').toLowerCase() === email);
         if (!found) {
+          recordAuthFailure(`fp:${email}`);
           return jsonResponse({ success: false, message: '❌ لم يتم العثور على أي حساب مسجل بهذا البريد الإلكتروني.' }, 404);
         }
 
-        const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+        const otpCode  = String(Math.floor(100000 + Math.random() * 900000));
+        const otpHash  = await sha256Hex(`reset:${email}:${otpCode}:${SECRET_KEY}`);
         const fullName = `${found.first_name} ${found.last_name}`;
         st.otp_codes[email] = {
-          code: otpCode,
+          otp_hash: otpHash,
           email,
           user_id: found.id,
           name: fullName,
           purpose: 'reset',
+          attempts: 0,
           created_at: new Date().toISOString(),
           expires_at: Date.now() + 10 * 60 * 1000
         };
@@ -704,7 +801,14 @@
           await saveDB(db);
           return jsonResponse({ success: false, message: '⏳ انتهت صلاحية كود التحقق (10 دقائق). اضغط على إعادة إرسال الكود.' }, 422);
         }
-        if (String(otpRec.code) !== inputOtp) {
+
+        const inputHash = await sha256Hex(`reset:${email}:${inputOtp}:${SECRET_KEY}`);
+        const codeMatch = (otpRec.otp_hash && otpRec.otp_hash === inputHash) || (otpRec.code && String(otpRec.code) === inputOtp);
+        if (!codeMatch) {
+          recordAuthFailure(`fp:${email}`);
+          otpRec.attempts = Number(otpRec.attempts || 0) + 1;
+          if (otpRec.attempts >= 5) delete st.otp_codes[email];
+          await saveDB(db);
           return jsonResponse({ success: false, message: '❌ كود التحقق غير صحيح! يرجى إدخال الكود المكون من 6 أرقام المرسل لبريدك.' }, 422);
         }
 
@@ -718,7 +822,8 @@
         if (newP.length < 8) return jsonResponse({ success: false, message: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.' }, 422);
         if (newP !== cnfP) return jsonResponse({ success: false, message: 'كلمتا المرور غير متطابقتين.' }, 422);
 
-        found.password_plain = newP;
+        found.password_hash = await hashPassword(newP);
+        delete found.password_plain;
         delete st.otp_codes[email];
         await saveDB(db);
         return jsonResponse({ success: true, message: '✅ تم تأكيد الكود وتغيير كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول.' });
@@ -737,9 +842,12 @@
       }
 
       if (method === 'POST') {
-        currUser.first_name = String(bodyData.first_name || currUser.first_name).trim();
-        currUser.last_name  = String(bodyData.last_name  || currUser.last_name).trim();
-        if (bodyData.new_password) currUser.password_plain = bodyData.new_password;
+        currUser.first_name = String(bodyData.first_name || currUser.first_name).trim().slice(0, 60);
+        currUser.last_name  = String(bodyData.last_name  || currUser.last_name).trim().slice(0, 60);
+        if (bodyData.new_password && String(bodyData.new_password).length >= 8) {
+          currUser.password_hash = await hashPassword(String(bodyData.new_password));
+          delete currUser.password_plain;
+        }
         if (options.body instanceof FormData) {
           const avFile = options.body.get('avatar');
           if (avFile instanceof File && avFile.size > 0) {
@@ -758,7 +866,7 @@
         phone: currUser.phone,
         role: currUser.role,
         avatar: currUser.avatar,
-        pwd_sig: currUser.password_plain,
+        pwd_sig: getUserPwdSig(currUser),
         spark_subscribed: userHasSpark(db, currUser),
         created_at: currUser.created_at
       };
@@ -1323,6 +1431,7 @@
         if (phone && db.users.some(u => String(u.phone || '') === phone)) {
           return jsonResponse({ success: false, message: 'رقم الهاتف مستخدم مسبقاً.' }, 409);
         }
+        const passHash = await hashPassword(pass);
         const newId = db.users.reduce((m, u) => Math.max(m, Number(u.id)), 0) + 1;
         const newUser = {
           id: newId,
@@ -1330,7 +1439,7 @@
           last_name: last,
           email: email || null,
           phone: phone || null,
-          password_plain: pass,
+          password_hash: passHash,
           role,
           is_active: 1,
           avatar: null,
@@ -1402,8 +1511,9 @@
         }
 
         const newPass = String(bodyData.password || bodyData.new_password || '').trim();
-        if (newPass !== '') {
-          u.password_plain = newPass;
+        if (newPass !== '' && !newPass.startsWith('sha256$') && newPass !== '••••••') {
+          u.password_hash = await hashPassword(newPass);
+          delete u.password_plain;
         }
 
         if (bodyData.spark_subscribed !== undefined && u.role !== 'admin') {
@@ -1434,7 +1544,7 @@
             phone: u.phone,
             role: u.role,
             avatar: u.avatar,
-            pwd_sig: u.password_plain,
+            pwd_sig: getUserPwdSig(u),
             spark_subscribed: true,
             created_at: u.created_at
           };

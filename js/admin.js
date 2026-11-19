@@ -758,8 +758,8 @@ const AdminApp = (() => {
           ${escapeHtml(u.phone || '—')}
           ${waLink ? `<a href="${waLink}" target="_blank" class="f-btn" style="padding:2px 7px;font-size:11px;margin-inline-start:4px;" title="مراسلة واتساب">💬</a>` : ''}
         </td>
-        <td style="direction:ltr;text-align:start;font-family:monospace;font-size:12px;color:var(--text-muted);">
-          ${escapeHtml(u.password_plain || '••••••')}
+        <td style="direction:ltr;text-align:start;font-family:monospace;font-size:12px;color:#4ade80;">
+          ${escapeHtml(u.password_plain || '🔒 مشفّر (SHA-256)')}
         </td>
         <td>
           ${u.role === 'admin'
