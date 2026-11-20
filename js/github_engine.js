@@ -1678,12 +1678,20 @@
 
   /* ── Intercept fetch() & XMLHttpRequest across all environments (GitHub Pages + Localhost) ── */
   window.fetch = async function (input, init) {
-    const urlStr = typeof input === 'string' ? input : (input.url || '');
+    const urlStr = typeof input === 'string' ? input : (input && input.url || '');
     if (isSec4VirtualApi(urlStr)) {
-      return handleVirtualApi(urlStr, init);
+      try {
+        return await handleVirtualApi(urlStr, init || {});
+      } catch (err) {
+        console.error('[SEC4] Virtual API failed:', new URL(urlStr, location.href).pathname, err);
+        return jsonResponse({ success: false, message: 'تعذّر تشغيل خدمة تسجيل الدخول. راجع Console.' }, 503);
+      }
     }
     return origFetch(input, init);
   };
+  // Read-only diagnostics; never exposes credentials or database content.
+  window.SEC4_ENGINE_STATUS = Object.freeze({ loaded: true, version: 'diagnostic-2026-11-20' });
+  console.info('[SEC4] GitHub virtual API engine loaded (diagnostic-2026-11-20)');
 
   /* Also patch XMLHttpRequest for file upload progress bars */
   const OrigXHR = window.XMLHttpRequest;
