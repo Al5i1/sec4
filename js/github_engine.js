@@ -1670,7 +1670,7 @@
     try {
       const parsed = new URL(String(url), location.href);
       return parsed.origin === location.origin &&
-        /^\/api\/[^/]+\.php$/i.test(parsed.pathname);
+        /(?:^|\/)api\/[^/]+\.php$/i.test(parsed.pathname);
     } catch {
       return false;
     }
