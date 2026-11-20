@@ -1664,10 +1664,22 @@
     return jsonResponse({ success: true });
   }
 
+  /* Only SEC4's own /api/*.php routes are handled by the virtual API.
+     External services (including Cloudflare Workers) must use real network requests. */
+  function isSec4VirtualApi(url) {
+    try {
+      const parsed = new URL(String(url), location.href);
+      return parsed.origin === location.origin &&
+        /^\/api\/[^/]+\.php$/i.test(parsed.pathname);
+    } catch {
+      return false;
+    }
+  }
+
   /* ── Intercept fetch() & XMLHttpRequest across all environments (GitHub Pages + Localhost) ── */
   window.fetch = async function (input, init) {
     const urlStr = typeof input === 'string' ? input : (input.url || '');
-    if (urlStr.includes('/api/')) {
+    if (isSec4VirtualApi(urlStr)) {
       return handleVirtualApi(urlStr, init);
     }
     return origFetch(input, init);
@@ -1689,7 +1701,7 @@
     };
 
     xhr.send = function (body) {
-      if (targetUrl.includes('/api/')) {
+      if (isSec4VirtualApi(targetUrl)) {
         handleVirtualApi(targetUrl, { method: targetMethod, body }).then(async resp => {
           const text = await resp.text();
           Object.defineProperty(xhr, 'status', { value: resp.status });
