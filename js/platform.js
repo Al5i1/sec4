@@ -488,15 +488,24 @@ const Platform = (() => {
     const detail = escapeHtml(record.description || '');
     const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
     const icon = getFileIcon(extension, record.type);
+    // Only display links explicitly available from the public feed; never expose
+    // authenticated Blackboard URLs or attempt to bypass Blackboard access.
     const url = publicFileUrl(record);
+    const safeUrl = escapeHtml(url);
+    const previewable = url && canPreview(extension, record.mime_type || '');
+    const safeTitleJs = JSON.stringify(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const safeUrlJs = JSON.stringify(url).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     return `<div class="file-card" data-sec4-public="1">
       <div><div class="file-head"><div style="display:flex;gap:10px;align-items:flex-start">
       <div class="file-type-ic">${icon}</div><div><div class="file-title">${title}</div>
       <span class="sc-tag">Blackboard</span></div></div></div>
       ${detail ? `<div class="file-desc">${detail}</div>` : ''}
       ${course ? `<div class="file-desc">${course}</div>` : ''}</div>
-      <div class="file-meta"><span>${url ? 'رابط ملف متاح' : 'اسم الملف ومعلوماته'}</span></div>
-      ${url ? `<div class="file-actions" style="margin-top:10px"><a class="f-btn primary" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">🔗 فتح الملف</a></div>` : ''}
+      <div class="file-meta"><span>${url ? 'رابط ملف متاح' : 'معلومات الملف فقط — لا يوجد رابط تحميل عام'}</span></div>
+      ${url ? `<div class="file-actions" style="margin-top:10px">
+        ${previewable ? `<button class="f-btn" onclick="Platform.openPreview(${safeUrlJs}, ${safeTitleJs}, '${escapeHtml(extension)}', false)">👁️ معاينة</button>` : ''}
+        <a class="f-btn primary" href="${safeUrl}" target="_blank" rel="noopener noreferrer">⬇️ فتح / تحميل الملف</a>
+      </div>` : ''}
     </div>`;
   }
 
@@ -616,8 +625,8 @@ const Platform = (() => {
     const favCls    = Number(f.is_favorite) === 1 ? 'fav-active' : '';
     const badge     = f.subject ? `<span class="sc-tag">${escapeHtml(f.subject)}</span>` : '';
     const adm       = isAdmin();
-    const streamUrl = f.stream_url || ('../' + f.file_path);
-    const dlUrl     = f.download_url || ('../' + f.file_path);
+    const streamUrl = f.stream_url || f.data_url || (f.file_path ? '../' + f.file_path : f.download_url || '');
+    const dlUrl     = f.download_url || f.data_url || (f.file_path ? '../' + f.file_path : streamUrl);
 
     /* Special visual rendering inside SPARK for text notes & exercise solution images */
     if (inSpark && isTxt) {
@@ -689,16 +698,16 @@ const Platform = (() => {
                 🔗 فتح الرابط
               </a>
             ` : `
-              ${(isPrev && (f.data_url || f.file_path || f.vault_file)) ? `
+              ${(isPrev && streamUrl) ? `
                 <button class="f-btn" onclick="Platform.openPreview('${escapeHtml(streamUrl)}', '${escapeHtml(f.title)}', '${escapeHtml(f.extension)}', ${inSpark || f.section === 'spark'})">
                   👁️ معاينة
                 </button>
               ` : ''}
-              <a class="f-btn primary" href="${escapeHtml(dlUrl)}"
+              ${dlUrl ? `<a class="f-btn primary" href="${escapeHtml(dlUrl)}"
                  ${(f.data_url || f.file_path || f.vault_file) ? `download="${escapeHtml(f.original_name || f.title)}"` : 'target="_blank" rel="noopener"'}
                  onclick="Platform.trackDownload(${f.id})">
                 ⬇️ تحميل الملف
-              </a>
+              </a>` : `<span class="file-desc">لا يوجد رابط تحميل متاح</span>`}
             `}
             ${adm ? `
               <button class="f-btn" onclick="Platform.openEditFileInline(${f.id}, ${inSpark})" title="تعديل / نقل">✏️</button>
