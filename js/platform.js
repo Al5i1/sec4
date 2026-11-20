@@ -450,6 +450,56 @@ const Platform = (() => {
     } catch { return ''; }
   }
 
+  // Resolve Blackboard links from the existing authenticated SEC4 file API.
+  // The public feed remains metadata-only; no Blackboard credentials are stored here.
+  const blackboardLinkCache = new Map();
+  function normalizeBlackboardTitle(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+  function safeBlackboardLink(value) {
+    if (typeof value !== 'string' || !value.trim()) return '';
+    try {
+      const url = new URL(value, location.href);
+      if (url.protocol !== 'https:') return '';
+      if (url.origin !== location.origin && url.hostname !== 'blackboard.uob.edu.bh') return '';
+      return url.href;
+    } catch { return ''; }
+  }
+  async function getBlackboardFileLinks(subject) {
+    if (blackboardLinkCache.has(subject)) return blackboardLinkCache.get(subject);
+    const task = (async () => {
+      const links = new Map();
+      const base = `../api/files.php?section=blackboard&subject=${encodeURIComponent(subject)}`;
+      const queue = [{ id: null, depth: 0 }];
+      const visited = new Set();
+      while (queue.length && visited.size < 120) {
+        const next = queue.shift();
+        const key = next.id == null ? 'root' : String(next.id);
+        if (visited.has(key)) continue;
+        visited.add(key);
+        const url = base + (next.id == null ? '' : '&folder_id=' + encodeURIComponent(next.id));
+        const response = await fetch(url);
+        if (!response.ok) throw Error('Blackboard file API HTTP ' + response.status);
+        const data = await response.json();
+        if (!data.success) throw Error('Blackboard file API unavailable');
+        for (const f of (data.files || [])) {
+          const name = normalizeBlackboardTitle(f.title || f.original_name || f.name);
+          const href = safeBlackboardLink(f.download_url || f.stream_url || f.external_url || f.data_url || '');
+          if (name && href && !links.has(name)) links.set(name, href);
+        }
+        if (next.depth < 4) {
+          for (const folder of (data.folders || [])) {
+            if (folder.id != null) queue.push({ id: folder.id, depth: next.depth + 1 });
+          }
+        }
+      }
+      return links;
+    })();
+    blackboardLinkCache.set(subject, task);
+    try { return await task; }
+    catch (error) { blackboardLinkCache.delete(subject); throw error; }
+  }
+
   async function getPublicRecords() {
     if (publicRecords) return publicRecords;
     if (publicFeedPromise) return publicFeedPromise;
@@ -481,18 +531,18 @@ const Platform = (() => {
     finally { publicFeedPromise = null; }
   }
 
-  function renderPublicRecord(record) {
+  function renderPublicRecord(record, authenticatedLink = '') {
     const name = String(record.title || record.name || record.filename || 'مادة Blackboard');
     const title = escapeHtml(name);
     const course = escapeHtml(record.course || record.course_name || record.subject || '');
     const detail = escapeHtml(record.description || '');
     const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
     const icon = getFileIcon(extension, record.type);
-    // Only display links explicitly available from the public feed; never expose
-    // authenticated Blackboard URLs or attempt to bypass Blackboard access.
-    const url = publicFileUrl(record);
+    // Prefer links from the existing authenticated SEC4 API. Blackboard enforces
+    // its own login when the user opens a protected file.
+    const url = safeBlackboardLink(authenticatedLink) || publicFileUrl(record);
     const safeUrl = escapeHtml(url);
-    const previewable = url && canPreview(extension, record.mime_type || '');
+    const previewable = url && !url.startsWith('https://blackboard.uob.edu.bh/') && canPreview(extension, record.mime_type || '');
     const safeTitleJs = JSON.stringify(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const safeUrlJs = JSON.stringify(url).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     return `<div class="file-card" data-sec4-public="1">
@@ -501,7 +551,7 @@ const Platform = (() => {
       <span class="sc-tag">Blackboard</span></div></div></div>
       ${detail ? `<div class="file-desc">${detail}</div>` : ''}
       ${course ? `<div class="file-desc">${course}</div>` : ''}</div>
-      <div class="file-meta"><span>${url ? 'رابط ملف متاح' : 'معلومات الملف فقط — لا يوجد رابط تحميل عام'}</span></div>
+      <div class="file-meta"><span>${url ? 'رابط ملف متاح — قد يتطلب تسجيل دخول Blackboard' : 'معلومات الملف فقط — رابط الملف غير متاح'}</span></div>
       ${url ? `<div class="file-actions" style="margin-top:10px">
         ${previewable ? `<button class="f-btn" onclick="Platform.openPreview(${safeUrlJs}, ${safeTitleJs}, '${escapeHtml(extension)}', false)">👁️ معاينة</button>` : ''}
         <a class="f-btn primary" href="${safeUrl}" target="_blank" rel="noopener noreferrer">⬇️ فتح / تحميل الملف</a>
@@ -529,7 +579,15 @@ const Platform = (() => {
       });
       if (!matches.length) return;
       if (!cachedFiles.length) grid.replaceChildren();
-      grid.insertAdjacentHTML('beforeend', matches.map(renderPublicRecord).join(''));
+      let fileLinks = new Map();
+      try { fileLinks = await getBlackboardFileLinks(subject); }
+      catch (error) { console.warn('SEC4 Blackboard links unavailable:', error.message); }
+      if (requestKey !== currentBrowseRequest || currentSection !== section ||
+          currentSubject !== subject || currentFolder !== folder) return;
+      grid.insertAdjacentHTML('beforeend', matches.map(r => {
+        const name = normalizeBlackboardTitle(r.title || r.name || r.filename);
+        return renderPublicRecord(r, fileLinks.get(name) || '');
+      }).join(''));
     } catch (err) {
       console.warn('SEC4 public feed unavailable:', err.message);
     }
