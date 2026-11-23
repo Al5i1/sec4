@@ -134,20 +134,8 @@
       <button class="nav-btn" data-tab="spark" onclick="AdminApp.switchTab('spark')">
         <span class="nav-ic">⚡</span> <span>إدارة محتوى SPARK</span>
       </button>
-      <button class="nav-btn" data-tab="projects" onclick="AdminApp.switchTab('projects')">
-        <span class="nav-ic">🚀</span> <span>إدارة المشاريع</span>
-      </button>
-      <button class="nav-btn" data-tab="exams" onclick="AdminApp.switchTab('exams')">
-        <span class="nav-ic">📝</span> <span>إدارة الاختبارات</span>
-      </button>
-      <button class="nav-btn" data-tab="schedule" onclick="AdminApp.switchTab('schedule')">
-        <span class="nav-ic">📅</span> <span>إدارة الجدول الدراسي</span>
-      </button>
       <button class="nav-btn" data-tab="blackboard" onclick="AdminApp.switchTab('blackboard')">
         <span class="nav-ic">🎓</span> <span>إدارة البلاكبورد</span>
-      </button>
-      <button class="nav-btn" data-tab="posts" onclick="AdminApp.switchTab('posts')">
-        <span class="nav-ic">📢</span> <span>المنشورات والإعلانات</span>
       </button>
       <button class="nav-btn" data-tab="notifications" onclick="AdminApp.switchTab('notifications')">
         <span class="nav-ic">🔔</span> <span>إشعارات @الكل العاجلة</span>
@@ -205,10 +193,7 @@
         <h3>⚡ اختصارات الإدارة السريعة</h3>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="f-btn primary" onclick="AdminApp.switchTab('spark-codes')">🔑 توليد أكواد SPARK</button>
-          <button class="f-btn" onclick="AdminApp.switchTab('posts')">➕ نشر إعلان جديد</button>
           <button class="f-btn" onclick="AdminApp.switchTab('notifications')">🔔 إرسال إشعار عاجل @الكل</button>
-          <button class="f-btn" onclick="AdminApp.switchTab('projects')">🚀 إدارة المشاريع</button>
-          <button class="f-btn" onclick="AdminApp.switchTab('exams')">📝 إدارة الاختبارات</button>
           <button class="f-btn" onclick="AdminApp.switchTab('users')">👥 إدارة حسابات الطلاب</button>
           <button class="f-btn" onclick="AdminApp.switchTab('backup')">💾 النسخ الاحتياطي</button>
         </div>
@@ -323,69 +308,6 @@
     </section>
 
     <!-- ─────────────────────────────────────────────────
-         TAB 3: POSTS & ANNOUNCEMENTS MANAGEMENT
-    ───────────────────────────────────────────────── -->
-    <section id="tab-posts" class="adm-tab" style="display:none;">
-      <div class="sec-head">
-        <h2>📢 إدارة المنشورات والإعلانات</h2>
-      </div>
-
-      <div class="admin-grid-2">
-        <div class="panel-card">
-          <h3 id="postFormTitle">➕ إضافة منشور / إعلان جديد</h3>
-          <form id="adminPostForm">
-            <input type="hidden" name="id" id="postEditId" value="0"/>
-
-            <div class="form-group">
-              <label>القسم المستهدف</label>
-              <select name="section" id="postSectionSel" style="width:100%;padding:10px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;">
-                <option value="general">🏠 الصفحة الرئيسية العامة</option>
-                <option value="spark">⚡ قسم SPARK للمشتركين</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label>عنوان المنشور</label>
-              <input type="text" name="title" id="postTitleInp" placeholder="مثال: موعد الاختبار النصفي لمادة ENG11" required/>
-            </div>
-
-            <div class="form-group">
-              <label>نص أو وصف المنشور</label>
-              <textarea name="content" id="postContentInp" rows="5"
-                        style="width:100%;padding:12px;border-radius:12px;background:var(--input-bg);border:1.5px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;font-size:13.5px;"
-                        placeholder="اكتب تفاصيل الإعلان هنا..." required></textarea>
-            </div>
-
-            <div class="form-group">
-              <label>إرفاق ملفات (يمكنك اختيار ملف أو عدة ملفات معاً)</label>
-              <input type="file" name="attachments[]" id="postFilesInp" multiple style="padding:9px;"/>
-            </div>
-
-            <label class="chk-row">
-              <input type="checkbox" name="is_pinned" id="postPinChk" value="1"/>
-              <span>📌 تثبيت هذا المنشور في الأعلى</span>
-            </label>
-
-            <label class="chk-row" id="notifyAllRow">
-              <input type="checkbox" name="notify_all" id="postNotifyChk" value="1"/>
-              <span>🔔 إرسال إشعار إلى @الكل (يصل لجميع الطلاب)</span>
-            </label>
-
-            <div style="display:flex;gap:8px;">
-              <button type="submit" class="btn" style="background:var(--accent-grad);margin-top:0;">🚀 نشر / حفظ المنشور</button>
-              <button type="button" id="cancelPostEditBtn" class="f-btn" style="display:none;" onclick="AdminApp.resetPostForm()">إلغاء</button>
-            </div>
-          </form>
-        </div>
-
-        <div class="panel-card">
-          <h3>📋 المنشورات الحالية</h3>
-          <div id="adminPostsList" class="posts-list"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ─────────────────────────────────────────────────
          TAB 4: @ALL NOTIFICATIONS
     ───────────────────────────────────────────────── -->
     <section id="tab-notifications" class="adm-tab" style="display:none;">
@@ -426,7 +348,7 @@
 
     <!-- ─────────────────────────────────────────────────
          UNIFIED FILE & FOLDER MANAGER
-         (Projects, Exams, Handouts, Blackboard, Resources, SPARK)
+         (Blackboard, SPARK)
     ───────────────────────────────────────────────── -->
     <section id="tab-filemanager" class="adm-tab" style="display:none;">
       <div class="sec-head">
@@ -456,7 +378,7 @@
           <!-- Upload Single or Multiple Files Card -->
           <div class="panel-card">
             <h3>⬆️ رفع ملفات (PDF, ZIP, RAR, PPT, DOC, XLS, MP4, صور، TXT)</h3>
-            <div class="limits-note">الحد الأقصى لحجم الملف الواحد: 150MB — يدعم رفع عدة ملفات معاً.</div>
+            <div class="limits-note">الحد الأقصى لحجم الملف الواحد: 200MB — يدعم رفع عدة ملفات معاً.</div>
             <form id="uploadFilesForm">
               <div class="form-group">
                 <label>اختر ملفاً أو عدة ملفات دفعة واحدة</label>
@@ -520,105 +442,6 @@
           <div id="admFilesSection">
             <h4 style="color:var(--text-muted);font-size:12.5px;margin-bottom:10px;">📄 الملفات والروابط في هذا المجلد</h4>
             <div class="files-grid" id="admFilesGrid"></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ─────────────────────────────────────────────────
-         TAB: SCHEDULE MANAGEMENT
-    ───────────────────────────────────────────────── -->
-    <section id="tab-schedule" class="adm-tab" style="display:none;">
-      <div class="sec-head">
-        <h2>📅 إدارة الجدول الدراسي لشعبة SEC4</h2>
-      </div>
-
-      <div class="admin-grid-2">
-        <div>
-          <div class="panel-card">
-            <h3>➕ إضافة محاضرة / حصة للجدول التفاعلي</h3>
-            <form id="scheduleEntryForm">
-              <input type="hidden" id="schedEditId" value="0"/>
-              <div class="form-group">
-                <label>اليوم</label>
-                <select id="schedDay" style="width:100%;padding:11px;border-radius:10px;background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);font-family:'Cairo',sans-serif;">
-                  <option value="الأحد">الأحد</option>
-                  <option value="الإثنين">الإثنين</option>
-                  <option value="الثلاثاء">الثلاثاء</option>
-                  <option value="الأربعاء">الأربعاء</option>
-                  <option value="الخميس">الخميس</option>
-                </select>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <div class="form-group">
-                  <label>من الساعة</label>
-                  <input type="text" id="schedStart" placeholder="08:00 AM" style="direction:ltr" required/>
-                </div>
-                <div class="form-group">
-                  <label>إلى الساعة</label>
-                  <input type="text" id="schedEnd" placeholder="09:30 AM" style="direction:ltr" required/>
-                </div>
-              </div>
-              <div class="form-group">
-                <label>المادة</label>
-                <input type="text" id="schedSubj" placeholder="مثال: ENG11" required/>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <div class="form-group">
-                  <label>القاعة / المبنى</label>
-                  <input type="text" id="schedRoom" placeholder="Room 204"/>
-                </div>
-                <div class="form-group">
-                  <label>المحاضر</label>
-                  <input type="text" id="schedInst" placeholder="اسم الدكتور/الأستاذ"/>
-                </div>
-              </div>
-              <div class="form-group">
-                <label>ملاحظات</label>
-                <input type="text" id="schedNotes" placeholder="حضوري / أونلاين..."/>
-              </div>
-              <button type="submit" class="btn" style="background:var(--accent-grad);margin-top:0;">💾 حفظ في الجدول</button>
-            </form>
-          </div>
-
-          <div class="panel-card">
-            <h3>🖼️ رفع صورة أو PDF للجدول الكامل</h3>
-            <form id="scheduleFileUploadForm">
-              <div class="form-group">
-                <label>اختر ملف صورة أو PDF للجدول</label>
-                <input type="file" name="files[]" accept=".pdf,image/*" required style="padding:9px;"/>
-              </div>
-              <div class="form-group">
-                <label>عنوان الملف</label>
-                <input type="text" name="title" placeholder="مثال: الجدول الرسمي للفصل الدراسي الأول"/>
-              </div>
-              <button type="submit" class="f-btn primary" style="width:100%;justify-content:center;padding:11px;">⬆️ رفع ملف الجدول</button>
-            </form>
-          </div>
-        </div>
-
-        <div>
-          <div class="panel-card">
-            <h3>📋 حصص الجدول التفاعلي الحالية</h3>
-            <div style="overflow-x:auto;">
-              <table class="admin-table">
-                <thead>
-                  <tr>
-                    <th>اليوم</th>
-                    <th>الوقت</th>
-                    <th>المادة</th>
-                    <th>القاعة</th>
-                    <th>إجراء</th>
-                  </tr>
-                </thead>
-                <tbody id="admScheduleBody"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="panel-card">
-            <h3>🖼️ ملفات وصور الجدول المرفوعة</h3>
-            <div class="files-grid" id="admScheduleFilesGrid"></div>
           </div>
         </div>
       </div>
@@ -855,9 +678,9 @@
   </div>
 
   <script src="../js/spark_manifest.js?v=18"></script>
-  <script src="../js/github_engine.js?v=19"></script>
+  <script src="../js/github_engine.js?v=20"></script>
   <script src="../js/i18n.js?v=18"></script>
   <script src="../js/app.js?v=18"></script>
-  <script src="../js/admin.js?v=18"></script>
+  <script src="../js/admin.js?v=19"></script>
 </body>
 </html>
