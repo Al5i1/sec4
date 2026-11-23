@@ -194,11 +194,12 @@
               );
               if (alreadyExists) continue;
 
-              log(`⬇️ جاري سحب ورفع الملف الجديد: ${fileName}...`);
+              log(`📝 تسجيل ملف جديد (التنزيل يتم على السيرفر السحابي): ${fileName}...`);
               const dlUrl     = `/learn/api/public/v1/courses/${cId}/contents/${item.id}/attachments/${att.id}/download`;
               const fullDlUrl = `https://blackboard.uob.edu.bh${dlUrl}`;
 
-              const upRes = await bgDownloadAndUpload(fullDlUrl, fileName, token);
+              // لا يتم تنزيل أي ملف على جهاز المستخدم — عامل السحاب (GitHub Actions) يجلب البايتات
+              const upRes = { ok: false, cloudPath: null, size: 0 };
               const ext   = (fileName.split('.').pop() || 'pdf').toLowerCase();
 
               state.custom_files.push({
