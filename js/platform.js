@@ -758,7 +758,7 @@ const Platform = (() => {
         <div>
           <div class="file-meta">
             <span>📅 ${dt}</span>
-            <span>${isLink ? 'رابط خارجي' : (Number(f.file_size) > 0 ? formatSize(f.file_size) : (ext ? ext.toUpperCase() + ' • بلاكبورد' : 'ملف'))}</span>
+            <span>${isLink ? 'رابط خارجي' : (f.unavailable_reason === 'blackboard_student_content_unavailable' ? '⚠️ غير متوفر حالياً' : (Number(f.file_size) > 0 ? formatSize(f.file_size) : (ext ? ext.toUpperCase() + ' • بلاكبورد' : 'ملف')))}</span>
           </div>
           <div class="file-actions" style="margin-top:10px;">
             ${isLink ? `
@@ -775,7 +775,7 @@ const Platform = (() => {
                  ${(f.data_url || f.file_path || f.vault_file) ? `download="${escapeHtml(f.original_name || f.title)}"` : 'target="_blank" rel="noopener"'}
                  onclick="Platform.trackDownload(${f.id})">
                 ⬇️ تحميل الملف
-              </a>` : `<span class="file-desc">لا يوجد رابط تحميل متاح</span>`}
+              </a>` : `<span class="file-desc">${f.unavailable_reason === 'blackboard_student_content_unavailable' ? '⚠️ هذا الملف غير متاح للطلاب على بلاكبورد حالياً' : 'لا يوجد رابط تحميل متاح'}</span>`}
             `}
             ${adm ? `
               <button class="f-btn" onclick="Platform.openEditFileInline(${f.id}, ${inSpark})" title="تعديل / نقل">✏️</button>
