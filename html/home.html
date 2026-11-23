@@ -42,47 +42,40 @@
 
     <nav class="sidebar-nav">
       <div class="nav-section-label">القائمة الرئيسية</div>
-      <button class="nav-btn active" data-view="home" onclick="Platform.switchView('home')">
+      <button class="nav-btn active" data-view="home" onclick="location.href='home.html'">
         <span class="nav-ic">🏠</span> <span>الرئيسية والإعلانات</span>
       </button>
 
       <div class="nav-section-label">الأقسام الرئيسية</div>
       <!-- 1. المشاريع -->
-      <button class="nav-btn" data-view="projects" onclick="Platform.switchView('projects')">
+      <button class="nav-btn" data-view="projects" onclick="location.href='projects.html'">
         <span class="nav-ic">🚀</span> <span>1. المشاريع</span>
       </button>
       <!-- 2. الاختبارات -->
-      <button class="nav-btn" data-view="exams" onclick="Platform.switchView('exams')">
+      <button class="nav-btn" data-view="exams" onclick="location.href='exams.html'">
         <span class="nav-ic">📝</span> <span>2. الاختبارات</span>
       </button>
       <!-- 3. الجدول -->
-      <button class="nav-btn" data-view="schedule" onclick="Platform.switchView('schedule')">
+      <button class="nav-btn" data-view="schedule" onclick="location.href='schedule.html'">
         <span class="nav-ic">📅</span> <span>3. الجدول</span>
       </button>
       <!-- 4. SPARK -->
-      <button class="nav-btn" data-view="spark" onclick="Platform.switchView('spark')" style="border:1px solid rgba(245,158,11,0.35);">
+      <button class="nav-btn" data-view="spark" onclick="location.href='spark.html'" style="border:1px solid rgba(245,158,11,0.35);">
         <span class="nav-ic">⚡</span> <span>4. SPARK</span>
       </button>
 
       <div class="nav-section-label">المواد والموارد</div>
-      <button class="nav-btn" data-view="handouts" onclick="Platform.switchView('handouts')">
-        <span class="nav-ic">📚</span> <span>الملازم والمواد</span>
-      </button>
-      <button class="nav-btn" data-view="blackboard" onclick="Platform.switchView('blackboard')">
+      <button class="nav-btn" data-view="blackboard" onclick="location.href='blackboard.html'">
         <span class="nav-ic">🎓</span> <span>البلاكبورد</span>
       </button>
-      <button class="nav-btn" data-view="resources" onclick="Platform.switchView('resources')">
-        <span class="nav-ic">🗂️</span> <span>الملفات والموارد</span>
-      </button>
-
       <div class="nav-section-label">مساحتي</div>
-      <button class="nav-btn" data-view="favorites" onclick="Platform.switchView('favorites')">
+      <button class="nav-btn" data-view="favorites" onclick="location.href='favorites.html'">
         <span class="nav-ic">⭐</span> <span>المفضلة</span>
       </button>
-      <button class="nav-btn" data-view="profile" onclick="Platform.switchView('profile')">
+      <button class="nav-btn" data-view="profile" onclick="location.href='profile.html'">
         <span class="nav-ic">👤</span> <span>الملف الشخصي</span>
       </button>
-      <button class="nav-btn" data-view="about" onclick="Platform.switchView('about')">
+      <button class="nav-btn" data-view="about" onclick="location.href='about.html'">
         <span class="nav-ic">ℹ️</span> <span>عن منصة SEC4</span>
       </button>
 
@@ -151,7 +144,7 @@
       </div>
 
       <!-- User Profile Chip -->
-      <div class="user-chip" onclick="Platform.switchView('profile')" title="الملف الشخصي">
+      <div class="user-chip" onclick="location.href='profile.html'" title="الملف الشخصي">
         <span class="u-avatar" id="headerAvatar">ط</span>
         <span id="headerUserName">...</span>
       </div>
@@ -201,7 +194,7 @@
       </div>
       <div class="sections-grid">
         <!-- 1. المشاريع -->
-        <div class="section-card" onclick="Platform.switchView('projects')">
+        <div class="section-card" onclick="location.href='projects.html'">
           <div class="sc-icon" style="background:rgba(56,189,248,0.16);color:#38bdf8;">🚀</div>
           <h3>1. المشاريع</h3>
           <p>ملفات ومتطلبات ونماذج المشاريع الدراسية الخاصة بطلاب الشعبة.</p>
@@ -211,7 +204,7 @@
         </div>
 
         <!-- 2. الاختبارات -->
-        <div class="section-card" onclick="Platform.switchView('exams')">
+        <div class="section-card" onclick="location.href='exams.html'">
           <div class="sc-icon" style="background:rgba(239,68,68,0.16);color:#f87171;">📝</div>
           <h3>2. الاختبارات</h3>
           <p>نماذج الاختبارات السابقة، المراجعات، والأسئلة لجميع المواد الخمس.</p>
@@ -221,7 +214,7 @@
         </div>
 
         <!-- 3. الجدول -->
-        <div class="section-card" onclick="Platform.switchView('schedule')">
+        <div class="section-card" onclick="location.href='schedule.html'">
           <div class="sc-icon" style="background:rgba(59,130,246,0.16);color:#60a5fa;">📅</div>
           <h3>3. الجدول</h3>
           <p>جدول المحاضرات والحصص الأسبوعي للشعبة بصيغة تفاعلية وملفات PDF/صور.</p>
@@ -231,7 +224,7 @@
         </div>
 
         <!-- 4. SPARK -->
-        <div class="section-card" onclick="Platform.switchView('spark')" style="border-color:rgba(245,158,11,0.4);">
+        <div class="section-card" onclick="location.href='spark.html'" style="border-color:rgba(245,158,11,0.4);">
           <div class="sc-icon" style="background:linear-gradient(135deg,rgba(245,158,11,0.25),rgba(239,68,68,0.25));color:#fbbf24;">⚡</div>
           <h3>4. SPARK</h3>
           <p>قسم خاص وحصري للمشتركين عبر كود التفعيل مع حماية متقدمة للمحتوى.</p>
@@ -241,18 +234,8 @@
           </div>
         </div>
 
-        <!-- الملازم -->
-        <div class="section-card" onclick="Platform.switchView('handouts')">
-          <div class="sc-icon" style="background:rgba(16,185,129,0.16);color:#34d399;">📚</div>
-          <h3>الملازم والمواد</h3>
-          <p>جميع الملازم والشروحات والمواد الدراسية مرتبة داخل مجلدات لكل مادة.</p>
-          <div class="sc-tags">
-            <span class="sc-tag">ENG11</span><span class="sc-tag">ENG12</span><span class="sc-tag">ENG13</span><span class="sc-tag">ENG14</span><span class="sc-tag">SSO</span>
-          </div>
-        </div>
-
         <!-- البلاكبورد -->
-        <div class="section-card" onclick="Platform.switchView('blackboard')">
+        <div class="section-card" onclick="location.href='blackboard.html'">
           <div class="sc-icon" style="background:rgba(168,85,247,0.16);color:#c084fc;">🎓</div>
           <h3>البلاكبورد</h3>
           <p>الروابط المباشرة، الشروحات، والملفات التعليمية الخاصة بالبلاكبورد حسب المادة.</p>
@@ -261,15 +244,6 @@
           </div>
         </div>
 
-        <!-- الملفات والموارد -->
-        <div class="section-card" onclick="Platform.switchView('resources')">
-          <div class="sc-icon" style="background:rgba(245,158,11,0.16);color:#fbbf24;">🗂️</div>
-          <h3>الملفات والموارد</h3>
-          <p>مكتبة عامة لجميع الملفات والأدوات والمراجع الإضافية التي تهم طلاب الشعبة.</p>
-          <div class="sc-tags">
-            <span class="sc-tag">مجلدات عامة</span><span class="sc-tag">جميع الصيغ</span>
-          </div>
-        </div>
       </div>
 
       <!-- Latest Announcements & Posts -->
@@ -563,8 +537,8 @@
     <footer class="p-footer">
       <div>© 2026 <strong>منصة SEC4</strong> — جميع الحقوق محفوظة لطلاب وإدارة شعبة SEC4</div>
       <div style="display:flex;gap:14px;">
-        <a href="#" onclick="Platform.switchView('home');return false;" style="color:var(--link);text-decoration:none;">الرئيسية</a>
-        <a href="#" onclick="Platform.switchView('about');return false;" style="color:var(--link);text-decoration:none;">عن المنصة</a>
+        <a href="#" onclick="location.href='home.html'" style="color:var(--link);text-decoration:none;">الرئيسية</a>
+        <a href="#" onclick="location.href='about.html'" style="color:var(--link);text-decoration:none;">عن المنصة</a>
       </div>
     </footer>
 
@@ -750,19 +724,19 @@
 
   <!-- ══ Mobile Bottom Navigation Bar ══ -->
   <nav class="mobile-bottom-nav" id="mobileBottomNav">
-    <button class="mob-nav-item active" data-mob-view="home" onclick="Platform.switchView('home')">
+    <button class="mob-nav-item active" data-mob-view="home" onclick="location.href='home.html'">
       <span class="m-ic">🏠</span>
       <span>الرئيسية</span>
     </button>
-    <button class="mob-nav-item" data-mob-view="projects" onclick="Platform.switchView('projects')">
+    <button class="mob-nav-item" data-mob-view="projects" onclick="location.href='projects.html'">
       <span class="m-ic">🚀</span>
       <span>المشاريع</span>
     </button>
-    <button class="mob-nav-item" data-mob-view="exams" onclick="Platform.switchView('exams')">
+    <button class="mob-nav-item" data-mob-view="exams" onclick="location.href='exams.html'">
       <span class="m-ic">📝</span>
       <span>الاختبارات</span>
     </button>
-    <button class="mob-nav-item" data-mob-view="spark" onclick="Platform.switchView('spark')">
+    <button class="mob-nav-item" data-mob-view="spark" onclick="location.href='spark.html'">
       <span class="m-ic">⚡</span>
       <span>SPARK</span>
     </button>
@@ -773,10 +747,10 @@
   </nav>
 
   <script src="../js/spark_manifest.js?v=18"></script>
-  <script src="../js/github_engine.js?v=18"></script>
+  <script src="../js/github_engine.js?v=19"></script>
   <script src="../js/i18n.js?v=18"></script>
   <script src="../js/app.js?v=18"></script>
-  <script src="../js/platform.js?v=20"></script>
+  <script src="../js/platform.js?v=21"></script>
   <script src="../js/ai_assistant.js?v=18"></script>
 </body>
 </html>
