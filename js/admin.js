@@ -19,9 +19,7 @@ const AdminApp = (() => {
   const sectionLabels = {
     projects   : { title: '🚀 إدارة قسم المشاريع الدراسية',        hasSubjects: true  },
     exams      : { title: '📝 إدارة الاختبارات ونماذج الأسئلة',    hasSubjects: true  },
-    handouts   : { title: '📚 إدارة الملازم والمواد الدراسية',     hasSubjects: true  },
     blackboard : { title: '🎓 إدارة روابط ومواد البلاكبورد',       hasSubjects: true  },
-    resources  : { title: '🗂️ إدارة الملفات والموارد العامة',      hasSubjects: false },
     spark      : { title: '⚡ إدارة ملفات ومجلدات SPARK المحمية', hasSubjects: false },
   };
 
@@ -143,7 +141,6 @@ const AdminApp = (() => {
         { ic: '⚡', title: 'مشتركو SPARK',         val: s.spark_subs_count,  sub: `${s.spark_codes_avail} كود متاح للتوزيع` },
         { ic: '🚀', title: 'ملفات المشاريع',       val: s.projects_count,    sub: 'جميع المواد الخمس' },
         { ic: '📝', title: 'ملفات الاختبارات',     val: s.exams_count,       sub: 'ENG11 - ENG14 & SSO' },
-        { ic: '📚', title: 'الملازم الدراسية',     val: s.handouts_count,    sub: 'جميع المواد الخمس' },
         { ic: '📢', title: 'المنشورات والإعلانات', val: s.total_posts,       sub: `${s.pinned_posts} مثبت في الأعلى` },
         { ic: '📄', title: 'إجمالي الملفات والروابط', val: s.total_files,    sub: `${s.total_folders} مجلد منظم` },
         { ic: '⬇️', title: 'مرات التحميل',         val: s.total_downloads,   sub: 'تحميلات الطلاب للملفات' },
