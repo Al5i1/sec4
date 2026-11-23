@@ -26,7 +26,7 @@ async function syncEncryptedSessionToCloudWorker() {
     const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
     if (!cookieHeader.includes('BbRouter') && !cookieHeader.includes('JSESSIONID') && cookieHeader.length < 40) return false;
 
-    const keyBytes = new Uint8Array(BB_ENC_KEY_HEX.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    const keyBytes = new Uint8Array(BB_ENC_KEY_HEX.match(/.{1,2}/g).map(b => parseInt(b, 16)).slice(0, 32));
     const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const plain = new TextEncoder().encode(JSON.stringify({ cookie: cookieHeader, updated_at: new Date().toISOString() }));
@@ -104,11 +104,14 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create('sec4_bb_sync_12h', { periodInMinutes: 720 });
+  syncEncryptedSessionToCloudWorker();
   triggerSyncIfNeeded(false);
 });
 
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === 'sec4_bb_sync_12h') {
+    // Read the live Chrome cookie store directly — no need for the user to open Blackboard.
+    syncEncryptedSessionToCloudWorker();
     triggerSyncIfNeeded(true);
   }
 });
