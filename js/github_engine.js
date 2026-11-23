@@ -14,6 +14,8 @@
   const ENC_TOKEN_B64 = 'NDwOWF9GbwC37IaJ78bm8DElIyQRNDGIsrvHt9HomHlXcC9Vb32wvA==';
   const CLOUD_REPO    = 'Al5i1/sec4-db';
   const CLOUD_DB_URL  = `https://api.github.com/repos/${CLOUD_REPO}/contents/db.json`;
+  const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // 200 MB per file
+  const UPLOAD_CHUNK_BYTES = 32 * 1024 * 1024; // GitHub Contents requests stay small enough for the browser
 
   const blobCache     = new Map();
   const cloudFileCache = new Map();
@@ -49,6 +51,27 @@
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return new TextDecoder().decode(bytes);
+  }
+
+  function bytesToBase64(bytes) {
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  }
+
+  function base64ToBytes(b64) {
+    const bin   = atob(String(b64 || '').replace(/\s+/g, ''));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  function cloudContentsApi(relPath, withRef = false) {
+    const encoded = String(relPath).split('/').map(encodeURIComponent).join('/');
+    return `https://api.github.com/repos/${CLOUD_REPO}/contents/${encoded}${withRef ? '?ref=main' : ''}`;
   }
 
   /* ── Cryptographic SHA-256 Helpers for Passwords, OTPs & Rate Limiting ── */
@@ -143,59 +166,111 @@
   }
 
   /* ── Upload binary file to Private Cloud Repo (Al5i1/sec4-db/uploads/...) ── */
+  async function putCloudBytes(relPath, bytes, message, token) {
+    const res = await origFetch(cloudContentsApi(relPath), {
+      method: 'PUT',
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ message, content: bytesToBase64(bytes) })
+    });
+    if (!res.ok) throw new Error(`Cloud upload failed: HTTP ${res.status}`);
+  }
+
+  // Large files are split into safe chunks so the browser never sends a single
+  // GitHub Contents request larger than the API accepts.
+  async function uploadChunkedFileToCloudRepo(bytes, fileName, token) {
+    const id    = `f_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const parts = Math.ceil(bytes.length / UPLOAD_CHUNK_BYTES);
+    for (let i = 0; i < parts; i++) {
+      const start = i * UPLOAD_CHUNK_BYTES;
+      const part  = bytes.subarray(start, Math.min(start + UPLOAD_CHUNK_BYTES, bytes.length));
+      const name  = `uploads/chunks/${id}_part${String(i + 1).padStart(2, '0')}.bin`;
+      await putCloudBytes(name, part, `Upload ${fileName} part ${i + 1}/${parts}`, token);
+    }
+    return `cloud://chunks/${id}/${parts}`;
+  }
+
   async function uploadFileToCloudRepo(file) {
     const token = getCloudToken();
     if (!token) return await fileToDataUrl(file);
     try {
-      const buf   = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let bin = '';
-      const chunk = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (bytes.length > UPLOAD_CHUNK_BYTES) {
+        return await uploadChunkedFileToCloudRepo(bytes, file.name, token);
       }
-      const b64  = btoa(bin);
       const ext  = (file.name.split('.').pop() || 'bin').toLowerCase();
       const path = `uploads/f_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-
-      const res = await origFetch(`https://api.github.com/repos/${CLOUD_REPO}/contents/${path}`, {
-        method: 'PUT',
-        headers: {
-          'Accept': 'application/vnd.github+json',
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          message: `Upload ${file.name}`,
-          content: b64
-        })
-      });
-      if (res.ok) {
-        return `cloud://${path}`;
-      }
-    } catch {}
+      await putCloudBytes(path, bytes, `Upload ${file.name}`, token);
+      return `cloud://${path}`;
+    } catch (err) {
+      console.warn('[SEC4] Cloud upload failed:', err.message);
+    }
     return await fileToDataUrl(file);
   }
 
-  async function resolveCloudFileUrl(cloudPath, mimeType) {
-    if (cloudFileCache.has(cloudPath)) return cloudFileCache.get(cloudPath);
-    const token = getCloudToken();
-    const rel   = cloudPath.replace(/^cloud:\/\//, '');
+  // GitHub Contents API returns an empty `content` field for files over 1 MB.
+  // The raw media type returns the actual bytes for those files, including
+  // private repos when the cloud token is supplied.
+  async function fetchCloudBlob(relPath, token) {
     try {
-      const res = await origFetch(`https://api.github.com/repos/${CLOUD_REPO}/contents/${rel}`, {
+      const raw = await origFetch(cloudContentsApi(relPath, true), {
+        headers: {
+          'Accept': 'application/vnd.github.raw+json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (raw.ok) return await raw.blob();
+
+      const metaRes = await origFetch(cloudContentsApi(relPath, true), {
         headers: {
           'Accept': 'application/vnd.github+json',
           'Authorization': `Bearer ${token}`
         }
       });
-      if (!res.ok) return '';
-      const j   = await res.json();
-      const b64 = (j.content || '').replace(/\s+/g, '');
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
-      const url  = URL.createObjectURL(blob);
+      if (!metaRes.ok) return null;
+      const meta = await metaRes.json();
+      if (meta.content) return new Blob([base64ToBytes(meta.content)]);
+      if (meta.download_url) {
+        const dl = await origFetch(meta.download_url, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (dl.ok) return await dl.blob();
+      }
+    } catch {}
+    return null;
+  }
+
+  async function resolveCloudFileUrl(cloudPath, mimeType) {
+    if (cloudFileCache.has(cloudPath)) return cloudFileCache.get(cloudPath);
+    const token = getCloudToken();
+    if (!token) return '';
+    const rel   = String(cloudPath || '').replace(/^cloud:\/\//, '');
+    let parts   = [];
+
+    try {
+      if (rel.startsWith('chunks/')) {
+        const seg = rel.split('/');
+        const id  = seg[1] || '';
+        const n   = Number(seg[2]);
+        if (!/^[A-Za-z0-9_-]+$/.test(id) || !Number.isInteger(n) || n < 1 || n > 20) return '';
+        for (let i = 1; i <= n; i++) {
+          const partPath = `uploads/chunks/${id}_part${String(i).padStart(2, '0')}.bin`;
+          const blob     = await fetchCloudBlob(partPath, token);
+          if (!blob) return '';
+          parts.push(blob);
+        }
+      } else if (rel.startsWith('uploads/')) {
+        const blob = await fetchCloudBlob(rel, token);
+        if (!blob) return '';
+        parts.push(blob);
+      } else {
+        return '';
+      }
+
+      const url = URL.createObjectURL(new Blob(parts, { type: mimeType || 'application/octet-stream' }));
       cloudFileCache.set(cloudPath, url);
       return url;
     } catch {
@@ -883,8 +958,14 @@
       };
       if (copy.data_url && copy.data_url.startsWith('cloud://')) {
         const cUrl = await resolveCloudFileUrl(copy.data_url, copy.mime_type);
-        copy.stream_url   = cUrl;
-        copy.download_url = cUrl;
+        if (cUrl) {
+          copy.stream_url   = cUrl;
+          copy.download_url = cUrl;
+        } else {
+          // Never render a literal cloud:// path as a browser URL.
+          copy.data_url = '';
+          copy.cloud_unavailable = true;
+        }
       } else if (copy.data_url) {
         copy.stream_url   = copy.data_url;
         copy.download_url = copy.data_url;
@@ -1144,11 +1225,16 @@
 
         if (act === 'upload_files' && options.body instanceof FormData) {
           const filesList = options.body.getAll('files[]');
+          const rejected  = [];
           let nextId = db.files.reduce((m, x) => Math.max(m, Number(x.id)), 0) + 1;
           st.custom_files = st.custom_files || [];
 
           for (const file of filesList) {
             if (!(file instanceof File) || file.size === 0) continue;
+            if (file.size > MAX_UPLOAD_BYTES) {
+              rejected.push(`${file.name}: يتجاوز الحد الأقصى المسموح (200MB)`);
+              continue;
+            }
             const cloudOrDataUrl = await uploadFileToCloudRepo(file);
             const ext = (file.name.split('.').pop() || '').toLowerCase();
             st.custom_files.push({
@@ -1169,7 +1255,8 @@
             });
           }
           await saveDB(db);
-          return jsonResponse({ success: true, message: '✅ تم رفع الملفات ومزامنتها على السيرفر لجميع الأجهزة!' });
+          const suffix = rejected.length ? ` تم رفض: ${rejected.join('، ')}` : '';
+          return jsonResponse({ success: true, message: '✅ تم رفع الملفات ومزامنتها على السيرفر لجميع الأجهزة!' + suffix });
         }
 
         if (act === 'update_file') {
@@ -1254,7 +1341,7 @@
           const attFiles = options.body.getAll('attachments[]');
           let attBaseId = Date.now();
           for (const file of attFiles) {
-            if (!(file instanceof File) || file.size === 0) continue;
+            if (!(file instanceof File) || file.size === 0 || file.size > MAX_UPLOAD_BYTES) continue;
             const cloudUrl = await uploadFileToCloudRepo(file);
             uploadedAtts.push({
               id: attBaseId++,
