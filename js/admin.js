@@ -93,7 +93,7 @@ const AdminApp = (() => {
     document.getElementById('pSidebar').classList.remove('open');
     document.querySelectorAll('.adm-tab').forEach(s => s.style.display = 'none');
 
-    if (['projects', 'exams', 'handouts', 'blackboard', 'resources', 'spark'].includes(tabName)) {
+    if (['projects', 'exams', 'blackboard', 'spark'].includes(tabName)) {
       currentSection = tabName;
       currentFolder  = null;
       const meta     = sectionLabels[tabName];
