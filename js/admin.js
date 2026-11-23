@@ -6,7 +6,7 @@
 const AdminApp = (() => {
   let adminUser      = null;
   let currentTab     = 'stats';
-  let currentSection = 'exams';
+  let currentSection = 'blackboard';
   let currentSubject = 'ENG11';
   let currentFolder  = null;
 
@@ -17,11 +17,13 @@ const AdminApp = (() => {
   let cachedSparkCodes = [];
 
   const sectionLabels = {
-    projects   : { title: '🚀 إدارة قسم المشاريع الدراسية',        hasSubjects: true  },
-    exams      : { title: '📝 إدارة الاختبارات ونماذج الأسئلة',    hasSubjects: true  },
     blackboard : { title: '🎓 إدارة روابط ومواد البلاكبورد',       hasSubjects: true  },
     spark      : { title: '⚡ إدارة ملفات ومجلدات SPARK المحمية', hasSubjects: false },
   };
+
+  // Sections removed from the public platform must stay unreachable in the
+  // admin dashboard too, even if an old link or hash calls switchTab directly.
+  const REMOVED_ADMIN_TABS = new Set(['projects', 'exams', 'schedule', 'posts']);
 
   /* ── Helpers ── */
   function toast(msg, isErr = false) {
@@ -86,6 +88,7 @@ const AdminApp = (() => {
 
   /* ── 2. Switch Admin Tabs ── */
   function switchTab(tabName) {
+    if (REMOVED_ADMIN_TABS.has(tabName)) return;
     currentTab = tabName;
     document.querySelectorAll('.p-sidebar .nav-btn[data-tab]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === tabName);
@@ -93,7 +96,7 @@ const AdminApp = (() => {
     document.getElementById('pSidebar').classList.remove('open');
     document.querySelectorAll('.adm-tab').forEach(s => s.style.display = 'none');
 
-    if (['projects', 'exams', 'blackboard', 'spark'].includes(tabName)) {
+    if (['blackboard', 'spark'].includes(tabName)) {
       currentSection = tabName;
       currentFolder  = null;
       const meta     = sectionLabels[tabName];
@@ -121,9 +124,7 @@ const AdminApp = (() => {
 
     if (tabName === 'stats')         loadStats();
     if (tabName === 'spark-codes')   loadSparkCodes();
-    if (tabName === 'posts')         loadPosts();
     if (tabName === 'notifications') loadNotifications();
-    if (tabName === 'schedule')      loadSchedule();
     if (tabName === 'users')         loadUsers();
     if (tabName === 'backup')        loadBackups();
   }
@@ -139,9 +140,6 @@ const AdminApp = (() => {
       const cards = [
         { ic: '👥', title: 'إجمالي الحسابات',      val: s.total_users,       sub: `${s.active_users} نشط | ${s.disabled_users} معطل` },
         { ic: '⚡', title: 'مشتركو SPARK',         val: s.spark_subs_count,  sub: `${s.spark_codes_avail} كود متاح للتوزيع` },
-        { ic: '🚀', title: 'ملفات المشاريع',       val: s.projects_count,    sub: 'جميع المواد الخمس' },
-        { ic: '📝', title: 'ملفات الاختبارات',     val: s.exams_count,       sub: 'ENG11 - ENG14 & SSO' },
-        { ic: '📢', title: 'المنشورات والإعلانات', val: s.total_posts,       sub: `${s.pinned_posts} مثبت في الأعلى` },
         { ic: '📄', title: 'إجمالي الملفات والروابط', val: s.total_files,    sub: `${s.total_folders} مجلد منظم` },
         { ic: '⬇️', title: 'مرات التحميل',         val: s.total_downloads,   sub: 'تحميلات الطلاب للملفات' },
       ];
@@ -591,8 +589,7 @@ const AdminApp = (() => {
     const data = await res.json();
     if (data.success) {
       toast(data.message);
-      if (currentTab === 'schedule') loadSchedule();
-      else loadFmData();
+      loadFmData();
     }
   }
 
