@@ -8,6 +8,8 @@ const CLOUD_REPO       = 'Al5i1/sec4-db';
 const SYNC_KEY         = 'SEC4_CLOUD_SYNC_KEY_2026_#7741';
 const ENC_TOKEN_B64    = 'NDwOWF9GbwC37IaJ78bm8DElIyQRNDGIsrvHt9HomHlXcC9Vb32wvA==';
 const BB_ENC_KEY_HEX   = '534543345f42425f434c4f55445f5641554c545f4b45595f323032365f39393831';
+const MAX_FILE_BYTES   = 200 * 1024 * 1024; // 200 MB per file
+const CHUNK_BYTES      = 32 * 1024 * 1024;
 
 function getCloudToken() {
   const bin = atob(ENC_TOKEN_B64);
@@ -135,6 +137,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.action === 'DOWNLOAD_AND_UPLOAD_BB_FILE') {
     (async () => {
+      const uploaded = [];
       try {
         const dlRes = await fetch(msg.downloadUrl, { credentials: 'include' });
         if (!dlRes.ok) {
@@ -143,34 +146,66 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         const buf   = await dlRes.arrayBuffer();
         const bytes = new Uint8Array(buf);
-        if (bytes.length === 0 || bytes.length > 25 * 1024 * 1024) {
+        if (bytes.length === 0 || bytes.length > MAX_FILE_BYTES) {
           sendResponse({ ok: false, size: bytes.length });
           return;
         }
-        let bin = '';
-        const chunk = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunk) {
-          bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-        }
-        const b64 = btoa(bin);
-        const ghRes = await fetch(`https://api.github.com/repos/${msg.cloudRepo}/contents/${msg.path}`, {
-          method: 'PUT',
-          headers: {
-            'Accept': 'application/vnd.github+json',
-            'Authorization': `Bearer ${msg.token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            message: `Blackboard Auto-Sync: ${msg.fileName}`,
-            content: b64
-          })
-        });
-        if (ghRes.ok) {
-          sendResponse({ ok: true, cloudPath: `cloud://${msg.path}`, size: bytes.length });
+
+        const bytesToBase64 = data => {
+          let bin = '';
+          const chunk = 0x8000;
+          for (let i = 0; i < data.length; i += chunk) {
+            bin += String.fromCharCode.apply(null, data.subarray(i, i + chunk));
+          }
+          return btoa(bin);
+        };
+        const putContents = async (relPath, data, message) => {
+          const res = await fetch(`https://api.github.com/repos/${msg.cloudRepo}/contents/${relPath}`, {
+            method: 'PUT',
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': `Bearer ${msg.token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ message, content: bytesToBase64(data) })
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const j = await res.json();
+          uploaded.push({ relPath, sha: j.content && j.content.sha });
+        };
+
+        let cloudPath;
+        if (bytes.length > CHUNK_BYTES) {
+          const baseId = String(msg.path || '').replace(/^uploads\//, '').replace(/\.[^.]+$/, '') || `bb_${Date.now()}`;
+          const parts  = Math.ceil(bytes.length / CHUNK_BYTES);
+          for (let i = 0; i < parts; i++) {
+            const start = i * CHUNK_BYTES;
+            const part  = bytes.subarray(start, Math.min(start + CHUNK_BYTES, bytes.length));
+            await putContents(
+              `uploads/chunks/${baseId}_part${String(i + 1).padStart(2, '0')}.bin`,
+              part,
+              `Blackboard Auto-Sync: ${msg.fileName} part ${i + 1}/${parts}`
+            );
+          }
+          cloudPath = `cloud://chunks/${baseId}/${parts}`;
         } else {
-          sendResponse({ ok: false, size: bytes.length });
+          await putContents(msg.path, bytes, `Blackboard Auto-Sync: ${msg.fileName}`);
+          cloudPath = `cloud://${msg.path}`;
         }
+        sendResponse({ ok: true, cloudPath, size: bytes.length });
       } catch {
+        for (const u of uploaded) {
+          if (!u.sha) continue;
+          await fetch(`https://api.github.com/repos/${msg.cloudRepo}/contents/${u.relPath}`, {
+            method: 'DELETE',
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': `Bearer ${msg.token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ message: 'Cleanup failed Blackboard upload', sha: u.sha })
+          }).catch(() => {});
+        }
         sendResponse({ ok: false, size: 0 });
       }
     })();
