@@ -9,7 +9,7 @@ define('DB_PASS', '');
 define('DB_NAME', 'auth_app');
 
 /* File Upload Limits & Allowed Formats */
-define('MAX_FILE_SIZE_BYTES', 150 * 1024 * 1024); // 150 MB per file
+define('MAX_FILE_SIZE_BYTES', 200 * 1024 * 1024); // 200 MB per file
 define('ALLOWED_EXTENSIONS', [
     'pdf', 'zip', 'rar', '7z',
     'ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx', 'csv',
