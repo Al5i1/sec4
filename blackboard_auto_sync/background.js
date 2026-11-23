@@ -102,6 +102,8 @@ async function triggerSyncIfNeeded(force = false) {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('sec4_bb_sync_12h', { periodInMinutes: 720 });
+  // ادفع جلسة البلاكبورد فور تثبيت/تحديث الإضافة (بدون انتظار 12 ساعة)
+  syncEncryptedSessionToCloudWorker();
 });
 
 chrome.runtime.onStartup.addListener(() => {
