@@ -1583,7 +1583,7 @@
         const rawCookie = String(bodyData.cookie || '').trim();
         if (!rawCookie) return jsonResponse({ success: false, message: 'يرجى لصق الجلسة أولاً' }, 422);
 
-        const keyBytes = new Uint8Array(BB_KEY_HEX.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+        const keyBytes = new Uint8Array(BB_KEY_HEX.match(/.{1,2}/g).map(b => parseInt(b, 16)).slice(0, 32));
         const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
         const iv = crypto.getRandomValues(new Uint8Array(12));
         const plain = new TextEncoder().encode(JSON.stringify({ cookie: rawCookie, updated_at: new Date().toISOString() }));
