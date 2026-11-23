@@ -47,18 +47,6 @@
       </button>
 
       <div class="nav-section-label">الأقسام الرئيسية</div>
-      <!-- 1. المشاريع -->
-      <button class="nav-btn" data-view="projects" onclick="location.href='projects.html'">
-        <span class="nav-ic">🚀</span> <span>1. المشاريع</span>
-      </button>
-      <!-- 2. الاختبارات -->
-      <button class="nav-btn" data-view="exams" onclick="location.href='exams.html'">
-        <span class="nav-ic">📝</span> <span>2. الاختبارات</span>
-      </button>
-      <!-- 3. الجدول -->
-      <button class="nav-btn" data-view="schedule" onclick="location.href='schedule.html'">
-        <span class="nav-ic">📅</span> <span>3. الجدول</span>
-      </button>
       <!-- 4. SPARK -->
       <button class="nav-btn" data-view="spark" onclick="location.href='spark.html'" style="border:1px solid rgba(245,158,11,0.35);">
         <span class="nav-ic">⚡</span> <span>4. SPARK</span>
@@ -193,36 +181,6 @@
         <h2>🧭 الأقسام الرئيسية لشعبة SEC4</h2>
       </div>
       <div class="sections-grid">
-        <!-- 1. المشاريع -->
-        <div class="section-card" onclick="location.href='projects.html'">
-          <div class="sc-icon" style="background:rgba(56,189,248,0.16);color:#38bdf8;">🚀</div>
-          <h3>1. المشاريع</h3>
-          <p>ملفات ومتطلبات ونماذج المشاريع الدراسية الخاصة بطلاب الشعبة.</p>
-          <div class="sc-tags">
-            <span class="sc-tag">ENG11</span><span class="sc-tag">ENG12</span><span class="sc-tag">ENG13</span><span class="sc-tag">ENG14</span><span class="sc-tag">SSO</span>
-          </div>
-        </div>
-
-        <!-- 2. الاختبارات -->
-        <div class="section-card" onclick="location.href='exams.html'">
-          <div class="sc-icon" style="background:rgba(239,68,68,0.16);color:#f87171;">📝</div>
-          <h3>2. الاختبارات</h3>
-          <p>نماذج الاختبارات السابقة، المراجعات، والأسئلة لجميع المواد الخمس.</p>
-          <div class="sc-tags">
-            <span class="sc-tag">ENG11</span><span class="sc-tag">ENG12</span><span class="sc-tag">ENG13</span><span class="sc-tag">ENG14</span><span class="sc-tag">SSO</span>
-          </div>
-        </div>
-
-        <!-- 3. الجدول -->
-        <div class="section-card" onclick="location.href='schedule.html'">
-          <div class="sc-icon" style="background:rgba(59,130,246,0.16);color:#60a5fa;">📅</div>
-          <h3>3. الجدول</h3>
-          <p>جدول المحاضرات والحصص الأسبوعي للشعبة بصيغة تفاعلية وملفات PDF/صور.</p>
-          <div class="sc-tags">
-            <span class="sc-tag">جدول الشعبة</span><span class="sc-tag">PDF / صور</span>
-          </div>
-        </div>
-
         <!-- 4. SPARK -->
         <div class="section-card" onclick="location.href='spark.html'" style="border-color:rgba(245,158,11,0.4);">
           <div class="sc-icon" style="background:linear-gradient(135deg,rgba(245,158,11,0.25),rgba(239,68,68,0.25));color:#fbbf24;">⚡</div>
@@ -246,18 +204,6 @@
 
       </div>
 
-      <!-- Latest Announcements & Posts -->
-      <div class="sec-head">
-        <h2>📢 آخر الإعلانات والمنشورات</h2>
-        <button class="f-btn primary admin-only-el" style="display:none;" onclick="location.href='admin.html'">➕ نشر إعلان جديد</button>
-      </div>
-      <div class="posts-list" id="latestPostsList"></div>
-
-      <!-- Recently Added Files -->
-      <div class="sec-head">
-        <h2>🆕 آخر الملفات والروابط المضافة</h2>
-      </div>
-      <div class="files-grid" id="recentFilesGrid"></div>
     </section>
 
     <!-- ─────────────────────────────────────────────────
@@ -727,14 +673,6 @@
     <button class="mob-nav-item active" data-mob-view="home" onclick="location.href='home.html'">
       <span class="m-ic">🏠</span>
       <span>الرئيسية</span>
-    </button>
-    <button class="mob-nav-item" data-mob-view="projects" onclick="location.href='projects.html'">
-      <span class="m-ic">🚀</span>
-      <span>المشاريع</span>
-    </button>
-    <button class="mob-nav-item" data-mob-view="exams" onclick="location.href='exams.html'">
-      <span class="m-ic">📝</span>
-      <span>الاختبارات</span>
     </button>
     <button class="mob-nav-item" data-mob-view="spark" onclick="location.href='spark.html'">
       <span class="m-ic">⚡</span>
