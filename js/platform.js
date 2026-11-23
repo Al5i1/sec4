@@ -26,6 +26,10 @@ const Platform = (() => {
     resources  : { title: '🗂️ قسم الملفات والموارد العامة',   hasSubjects: false, defaultSubj: ''      },
   };
 
+  // Dedicated pages for removed sections remain on disk, but only verified
+  // admins may open them.
+  const ADMIN_ONLY_VIEWS = new Set(['projects', 'exams', 'schedule']);
+
   /* ── Helpers ── */
   function toast(msg, isErr = false) {
     let el = document.getElementById('pToast');
@@ -347,6 +351,10 @@ const Platform = (() => {
   }
 
   function switchView(viewName, subj = null, folderId = null) {
+    if (ADMIN_ONLY_VIEWS.has(viewName) && !isAdmin()) {
+      location.href = 'home.html';
+      return;
+    }
     currentView = viewName;
     document.querySelectorAll('.p-sidebar .nav-btn[data-view]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.view === viewName);
@@ -679,12 +687,14 @@ const Platform = (() => {
     const isLink    = f.item_type === 'link';
     const isImg     = ['png','jpg','jpeg','gif','webp','svg'].includes(ext);
     const isTxt     = ext === 'txt';
-    const isPrev    = !isLink && canPreview(ext, f.mime_type);
     const favCls    = Number(f.is_favorite) === 1 ? 'fav-active' : '';
     const badge     = f.subject ? `<span class="sc-tag">${escapeHtml(f.subject)}</span>` : '';
     const adm       = isAdmin();
-    const streamUrl = f.stream_url || f.data_url || (f.file_path ? '../' + f.file_path : f.download_url || '');
-    const dlUrl     = f.download_url || f.data_url || (f.file_path ? '../' + f.file_path : streamUrl);
+    const rawDataUrl = typeof f.data_url === 'string' && !f.data_url.startsWith('cloud://') ? f.data_url : '';
+    const streamUrl = f.stream_url || rawDataUrl || (f.file_path ? '../' + f.file_path : '');
+    const dlUrl     = f.download_url || rawDataUrl || (f.file_path ? '../' + f.file_path : streamUrl);
+    const bbBlocked = /^https:\/\/blackboard\.uob\.edu\.bh\//i.test(streamUrl);
+    const isPrev    = !isLink && !!streamUrl && !bbBlocked && canPreview(ext, f.mime_type);
 
     /* Special visual rendering inside SPARK for text notes & exercise solution images */
     if (inSpark && isTxt) {
@@ -1554,12 +1564,22 @@ const Platform = (() => {
   async function init() {
     /* Switch to this page's dedicated section immediately (synchronous, before any awaits). */
     const initialView = window.SEC4_INITIAL_VIEW;
-    if (initialView && (sectionMeta[initialView] || document.getElementById('view-' + initialView))) {
+    if (initialView && !ADMIN_ONLY_VIEWS.has(initialView) &&
+        (sectionMeta[initialView] || document.getElementById('view-' + initialView))) {
       switchView(initialView);
     }
 
     const ok = await checkSession();
     if (!ok) return;
+
+    // Admin-only dedicated pages must never render for a verified non-admin.
+    if (initialView && ADMIN_ONLY_VIEWS.has(initialView)) {
+      if (!isAdmin()) {
+        location.href = 'home.html';
+        return;
+      }
+      switchView(initialView);
+    }
 
     loadHomeData();
     loadNotifications();
