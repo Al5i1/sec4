@@ -1552,6 +1552,12 @@ const Platform = (() => {
 
   /* ── Init ── */
   async function init() {
+    /* Switch to this page's dedicated section immediately (synchronous, before any awaits). */
+    const initialView = window.SEC4_INITIAL_VIEW;
+    if (initialView && (sectionMeta[initialView] || document.getElementById('view-' + initialView))) {
+      switchView(initialView);
+    }
+
     const ok = await checkSession();
     if (!ok) return;
 
@@ -1576,9 +1582,9 @@ const Platform = (() => {
       });
     }
 
-    if (location.hash === '#spark') {
+    if (!window.SEC4_INITIAL_VIEW && location.hash === '#spark') {
       switchView('spark');
-    } else if (location.hash && location.hash.startsWith('#post-')) {
+    } else if (!window.SEC4_INITIAL_VIEW && location.hash && location.hash.startsWith('#post-')) {
       setTimeout(() => {
         const el = document.querySelector(location.hash);
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
